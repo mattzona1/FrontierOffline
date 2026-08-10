@@ -75,6 +75,7 @@ func _boot_game() -> void:
     await get_tree().process_frame
 
     _add_tester_overlay(game)
+    _add_asset_gallery(game)
 
     if is_instance_valid(status_label):
         var boot_root := status_label.get_parent()
@@ -90,6 +91,16 @@ func _add_tester_overlay(game: Node) -> void:
     overlay.set("game", game)
     overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     add_child(overlay)
+
+func _add_asset_gallery(game: Node) -> void:
+    var gallery_script = load("res://scripts/AssetGallery.gd")
+    if gallery_script == null:
+        return
+    var gallery := Control.new()
+    gallery.set_script(gallery_script)
+    gallery.set("game", game)
+    gallery.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    add_child(gallery)
 
 func _migrate_legacy_save() -> void:
     if not FileAccess.file_exists("user://save.json"):
