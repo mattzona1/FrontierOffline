@@ -41,10 +41,13 @@ jobs:
         shell: bash
         run: |
           python3 ci/fetch_bf_assets.py
+          python3 ci/fetch_original_ui.py
           echo "=== Bundled BF assets ==="
           cat assets/bf/manifest.json
+          echo "=== Preserved original UI ==="
+          cat assets/bf/original/manifest.json
           du -sh assets/bf
-          test "$(find assets/bf -type f | wc -l)" -ge 13
+          test "$(find assets/bf/original -type f | wc -l)" -ge 9
           timeout 45s godot --headless --editor --path . --quit || code=$?
           code=${code:-0}
           if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then exit "$code"; fi
@@ -79,6 +82,7 @@ jobs:
           stat -c 'APK bytes: %s' "builds/${APK_NAME}"
           test "$(stat -c %s "builds/${APK_NAME}")" -gt 27500000
           cp assets/bf/manifest.json "builds/${APK_NAME}.assets.json"
+          cp assets/bf/original/manifest.json "builds/${APK_NAME}.original-assets.json"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -88,6 +92,7 @@ jobs:
             builds/${{ env.APK_NAME }}
             builds/${{ env.APK_NAME }}.sha256
             builds/${{ env.APK_NAME }}.assets.json
+            builds/${{ env.APK_NAME }}.original-assets.json
           if-no-files-found: error
 
       - name: Publish manual test release
@@ -102,3 +107,4 @@ jobs:
             builds/${{ env.APK_NAME }}
             builds/${{ env.APK_NAME }}.sha256
             builds/${{ env.APK_NAME }}.assets.json
+            builds/${{ env.APK_NAME }}.original-assets.json
