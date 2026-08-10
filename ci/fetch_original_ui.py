@@ -3,7 +3,7 @@ import os, json, urllib.request, urllib.parse
 
 OUT = "assets/bf/original"
 BASE = "https://raw.githubusercontent.com/aMytho/brave-frontier-godot/main/"
-UA = "FrontierOfflineBuild/2.2"
+UA = "FrontierOfflineBuild/2.3"
 
 ASSETS = {
     "battle_ui.png": "Battle/UI/battle_ui.png",
@@ -28,6 +28,9 @@ ASSETS = {
     "menu_info_button.png": "Menu/Buttons and Banner/home_new_btn_info1.png",
     "menu_button_frame.png": "Menu/Buttons and Banner/home_new_btn_box1.png",
     "menu_banner.png": "Menu/Buttons and Banner/banner_20180903_discount_282-92.png",
+    "launch_arena.png": "Menu/Launch Icons/home_win_arena.png",
+    "launch_quest.png": "Menu/Launch Icons/home_win_quest.png",
+    "launch_gate.png": "Menu/Launch Icons/home_win_gate.png",
 }
 
 def get(url):
