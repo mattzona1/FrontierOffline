@@ -198,7 +198,6 @@ func _unit_grid() -> void:
         card.add_theme_stylebox_override("panel",style)
         battlefield.add_child(card)
         unit_cards.append(card)
-
         var unit := _unit(slot)
         var def := _definition(unit)
         var portrait := TextureRect.new()
@@ -347,7 +346,7 @@ func _battle_crystals(slot: int, count: int) -> void:
         crystal.add_theme_font_size_override("font_size",28)
         crystal.add_theme_color_override("font_color",Color("5fd3ff"))
         battlefield.add_child(crystal)
-        var target := unit_cards[slot].position + Vector2(250,92)
+        var target: Vector2 = unit_cards[slot].position + Vector2(250,92)
         var tween := create_tween()
         tween.tween_property(crystal,"position",target,0.25+0.04*i)
         await tween.finished
