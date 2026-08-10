@@ -27,11 +27,11 @@ jobs:
           fi
           echo "Startup smoke test completed without detected script errors."
 
-      - name: Enter a real battle scene
+      - name: Enter Quest 1 and execute attacks
         shell: bash
         run: |
           set -o pipefail
-          timeout 12s godot --headless --path . --script res://ci/battle_smoke.gd 2>&1 | tee battle-smoke.log || code=$?
+          timeout 15s godot --headless --path . --script res://ci/battle_smoke.gd 2>&1 | tee battle-smoke.log || code=$?
           code=${code:-0}
           cat battle-smoke.log
           if grep -E "SCRIPT ERROR|ERROR:.*(Invalid|Cannot|Attempt|Nonexistent|Nil)|Parse Error" battle-smoke.log; then
@@ -39,7 +39,11 @@ jobs:
             exit 1
           fi
           if ! grep -q "BATTLE_SMOKE_OK" battle-smoke.log; then
-            echo "Battle scene never reached the expected ready state."
+            echo "Quest 1 battle scene never reached the expected ready state."
+            exit 1
+          fi
+          if ! grep -q "BATTLE_ATTACK_OK" battle-smoke.log; then
+            echo "Quest 1 attack/BB flow was not verified."
             exit 1
           fi
           if [ "$code" -ne 0 ]; then
