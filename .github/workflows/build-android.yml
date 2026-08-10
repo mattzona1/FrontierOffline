@@ -31,6 +31,19 @@ jobs:
             cp -a "/root/.local/share/godot/export_templates/${GODOT_VERSION}.stable" ~/.local/share/godot/export_templates/
           fi
 
+      - name: Bundle Brave Frontier art
+        shell: bash
+        run: |
+          python3 ci/fetch_bf_assets.py
+          echo "=== Bundled BF assets ==="
+          cat assets/bf/manifest.json
+          du -sh assets/bf
+          test "$(find assets/bf -type f | wc -l)" -ge 13
+          # Import build-time assets so Godot includes them in the pack.
+          timeout 45s godot --headless --editor --path . --quit || code=$?
+          code=${code:-0}
+          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then exit "$code"; fi
+
       - name: Set build version
         shell: bash
         run: |
@@ -58,6 +71,10 @@ jobs:
           godot --headless --path . --export-release "Android APK" "builds/${APK_NAME}"
           test -s "builds/${APK_NAME}"
           sha256sum "builds/${APK_NAME}" > "builds/${APK_NAME}.sha256"
+          stat -c 'APK bytes: %s' "builds/${APK_NAME}"
+          # Previous code-only APKs were about 26.4MB. Require visible growth now that art is bundled.
+          test "$(stat -c %s "builds/${APK_NAME}")" -gt 27500000
+          cp assets/bf/manifest.json "builds/${APK_NAME}.assets.json"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -66,6 +83,7 @@ jobs:
           path: |
             builds/${{ env.APK_NAME }}
             builds/${{ env.APK_NAME }}.sha256
+            builds/${{ env.APK_NAME }}.assets.json
           if-no-files-found: error
 
       - name: Publish manual test release
@@ -79,3 +97,4 @@ jobs:
           files: |
             builds/${{ env.APK_NAME }}
             builds/${{ env.APK_NAME }}.sha256
+            builds/${{ env.APK_NAME }}.assets.json
