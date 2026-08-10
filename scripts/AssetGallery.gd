@@ -4,7 +4,7 @@ const GOLD := Color("f2c14e")
 const TEXT := Color("eef4ff")
 const MUTED := Color("a9bbd3")
 const PANEL := Color("101a2c")
-const PANEL_2 := Color("243a5a")
+const OFFICIAL_ROOT := "https://www.bravefrontier.jp"
 
 var game: Node
 var panel: PanelContainer
@@ -13,29 +13,33 @@ var gallery_grid: GridContainer
 var request: HTTPRequest
 var pending: Array = []
 var active_item: Dictionary = {}
+var active_phase := ""
 
+# Original BF1 numbering follows the classic six-hero sequence.
+# We fetch the official full-art page, discover its image URL, then cache the PNG/JPG locally.
 var starters := [
-    {"name":"Vargas","element":"Fire","file":"Unit_ills_full_10011.png"},
-    {"name":"Selena","element":"Water","file":"Unit_ills_full_20011.png"},
-    {"name":"Lance","element":"Earth","file":"Unit_ills_full_30011.png"},
-    {"name":"Eze","element":"Thunder","file":"Unit_ills_full_40011.png"},
-    {"name":"Atro","element":"Light","file":"Unit_ills_full_50011.png"},
-    {"name":"Magress","element":"Dark","file":"Unit_ills_full_60011.png"}
+    {"name":"Vargas","element":"Fire","no":1,"cache":"vargas_official.png"},
+    {"name":"Selena","element":"Water","no":5,"cache":"selena_official.png"},
+    {"name":"Lance","element":"Earth","no":9,"cache":"lance_official.png"},
+    {"name":"Eze","element":"Thunder","no":13,"cache":"eze_official.png"},
+    {"name":"Atro","element":"Light","no":17,"cache":"atro_official.png"},
+    {"name":"Magress","element":"Dark","no":21,"cache":"magress_official.png"}
 ]
 
 func _ready() -> void:
     mouse_filter = Control.MOUSE_FILTER_PASS
     request = HTTPRequest.new()
+    request.timeout = 20.0
     add_child(request)
     request.request_completed.connect(_on_request_completed)
     _build_button()
 
 func _build_button() -> void:
     var b := Button.new()
-    b.text = "ORIGINAL ART"
+    b.text = "ORIGINAL ART • OFFICIAL"
     b.position = Vector2(18, 194)
-    b.size = Vector2(180, 56)
-    b.add_theme_font_size_override("font_size", 18)
+    b.size = Vector2(260, 58)
+    b.add_theme_font_size_override("font_size", 17)
     b.pressed.connect(_open_gallery)
     add_child(b)
 
@@ -51,6 +55,7 @@ func _open_gallery() -> void:
     panel.offset_right = -14
     panel.offset_top = 90
     panel.offset_bottom = -35
+    panel.z_index = 100
     var style := StyleBoxFlat.new()
     style.bg_color = PANEL
     style.corner_radius_top_left = 18
@@ -65,14 +70,14 @@ func _open_gallery() -> void:
     panel.add_child(root)
 
     var title := Label.new()
-    title.text = "ORIGINAL BRAVE FRONTIER ART • STARTER BATCH"
+    title.text = "ORIGINAL BRAVE FRONTIER ART • OFFICIAL LIBRARY"
     title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    title.add_theme_font_size_override("font_size", 25)
+    title.add_theme_font_size_override("font_size", 24)
     title.add_theme_color_override("font_color", GOLD)
     root.add_child(title)
 
     status = Label.new()
-    status.text = "Cached art loads offline. Missing art downloads once and is saved locally."
+    status.text = "First load uses Alim's official Brave Frontier Library. Cached art works offline afterward."
     status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     status.add_theme_font_size_override("font_size", 15)
@@ -129,7 +134,7 @@ func _make_card(item: Dictionary) -> Control:
     tex.custom_minimum_size = Vector2(0, 245)
     tex.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
     tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-    var path := _cache_path(str(item["file"]))
+    var path := _cache_path(str(item["cache"]))
     if FileAccess.file_exists(path):
         var image := Image.new()
         if image.load(ProjectSettings.globalize_path(path)) == OK:
@@ -143,14 +148,16 @@ func _make_card(item: Dictionary) -> Control:
         placeholder.height = 256
         tex.texture = placeholder
     card.add_child(tex)
+
     var name := Label.new()
     name.text = "%s • %s" % [item["name"], item["element"]]
     name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     name.add_theme_font_size_override("font_size", 19)
     name.add_theme_color_override("font_color", TEXT)
     card.add_child(name)
+
     var state := Label.new()
-    state.text = "CACHED" if FileAccess.file_exists(path) else "DOWNLOAD NEEDED"
+    state.text = "CACHED OFFLINE" if FileAccess.file_exists(path) else "OFFICIAL ART NEEDED"
     state.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     state.add_theme_font_size_override("font_size", 13)
     state.add_theme_color_override("font_color", MUTED)
@@ -158,51 +165,107 @@ func _make_card(item: Dictionary) -> Control:
     return card
 
 func _refresh_assets() -> void:
-    pending.clear()
-    for item in starters:
-        pending.append(item)
-    status.text = "Refreshing original starter art..."
+    pending = starters.duplicate(true)
+    status.text = "Refreshing official starter art..."
     _download_next()
 
 func _queue_missing() -> void:
     pending.clear()
     for item in starters:
-        if not FileAccess.file_exists(_cache_path(str(item["file"]))):
+        if not FileAccess.file_exists(_cache_path(str(item["cache"]))):
             pending.append(item)
     if pending.is_empty():
         status.text = "All six starter artworks are cached and available offline."
         return
-    status.text = "Downloading %d missing starter artwork%s..." % [pending.size(), "s" if pending.size() != 1 else ""]
+    status.text = "Fetching %d missing artwork%s from the official library..." % [pending.size(), "s" if pending.size() != 1 else ""]
     _download_next()
 
 func _download_next() -> void:
     if pending.is_empty():
-        status.text = "Starter art cache ready."
+        status.text = "Official starter art cache ready."
         _render_gallery()
         return
+    if request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+        return
     active_item = pending.pop_front()
-    var filename := str(active_item["file"])
-    var encoded := filename.uri_encode()
-    var url := "https://bravefrontierglobal.fandom.com/wiki/Special:Redirect/file/%s" % encoded
-    var err := request.request(url)
+    active_phase = "page"
+    var page_url := "%s/library/bf1/bf1_full.php?no=%d" % [OFFICIAL_ROOT, int(active_item["no"])]
+    var err := request.request(page_url, ["User-Agent: Mozilla/5.0 FrontierOffline/0.2"])
     if err != OK:
-        status.text = "Could not request %s; continuing." % active_item["name"]
-        call_deferred("_download_next")
+        _asset_failed("Could not open official page")
 
 func _on_request_completed(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
-    if response_code >= 200 and response_code < 400 and body.size() > 1000:
+    if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 400:
+        _asset_failed("Official server returned %d" % response_code)
+        return
+
+    if active_phase == "page":
+        var html := body.get_string_from_utf8()
+        var image_url := _extract_official_image_url(html)
+        if image_url == "":
+            _asset_failed("Could not locate the full-art image on the official page")
+            return
+        active_phase = "image"
+        status.text = "Downloading %s from official library..." % active_item["name"]
+        var err := request.request(image_url, ["User-Agent: Mozilla/5.0 FrontierOffline/0.2", "Referer: %s/" % OFFICIAL_ROOT])
+        if err != OK:
+            _asset_failed("Could not request official image")
+        return
+
+    if active_phase == "image":
+        if body.size() < 1000:
+            _asset_failed("Official image response was empty")
+            return
         var image := Image.new()
-        var ok := image.load_png_from_buffer(body)
-        if ok == OK:
-            var path := _cache_path(str(active_item["file"]))
-            var f := FileAccess.open(path, FileAccess.WRITE)
-            if f:
-                f.store_buffer(body)
-            status.text = "Cached %s. %d remaining." % [active_item["name"], pending.size()]
-        else:
-            status.text = "%s returned non-PNG data; continuing." % active_item["name"]
-    else:
-        status.text = "%s download failed (%d); continuing." % [active_item.get("name", "Asset"), response_code]
+        var load_ok := image.load_png_from_buffer(body)
+        if load_ok != OK:
+            load_ok = image.load_jpg_from_buffer(body)
+        if load_ok != OK:
+            load_ok = image.load_webp_from_buffer(body)
+        if load_ok != OK:
+            _asset_failed("Official image was not a supported image format")
+            return
+
+        # Re-save as PNG so the cache has one predictable format regardless of source.
+        var path := _cache_path(str(active_item["cache"]))
+        var save_ok := image.save_png(ProjectSettings.globalize_path(path))
+        if save_ok != OK:
+            _asset_failed("Could not write cached art")
+            return
+        status.text = "Cached %s • %d remaining" % [active_item["name"], pending.size()]
+        _render_gallery()
+        call_deferred("_download_next")
+
+func _extract_official_image_url(html: String) -> String:
+    # Prefer src/href values containing common full-art cues. The official library may change
+    # exact directory names, so this intentionally avoids hardcoding one static asset path.
+    var re := RegEx.new()
+    re.compile("(?:src|href)=[\\\"']([^\\\"']+\\.(?:png|jpg|jpeg|webp)(?:\\?[^\\\"']*)?)[\\\"']")
+    var matches := re.search_all(html)
+    var fallback := ""
+    for m in matches:
+        var candidate := m.get_string(1).replace("&amp;", "&")
+        var low := candidate.to_lower()
+        if low.contains("logo") or low.contains("icon") or low.contains("btn") or low.contains("common"):
+            continue
+        var absolute := _absolute_url(candidate)
+        if fallback == "":
+            fallback = absolute
+        if low.contains("full") or low.contains("unit") or low.contains("chara") or low.contains("large"):
+            return absolute
+    return fallback
+
+func _absolute_url(path: String) -> String:
+    if path.begins_with("https://") or path.begins_with("http://"):
+        return path
+    if path.begins_with("//"):
+        return "https:" + path
+    if path.begins_with("/"):
+        return OFFICIAL_ROOT + path
+    return "%s/library/bf1/%s" % [OFFICIAL_ROOT, path]
+
+func _asset_failed(reason: String) -> void:
+    status.text = "%s: %s. Continuing..." % [active_item.get("name", "Asset"), reason]
     _render_gallery()
     call_deferred("_download_next")
 
