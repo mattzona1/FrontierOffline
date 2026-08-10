@@ -3,20 +3,21 @@ import os, re, sys, json, io, zipfile, urllib.request, urllib.parse
 
 ROOT = "https://www.bravefrontier.jp"
 OUT = "assets/bf"
-UA = "Mozilla/5.0 FrontierOfflineBuild/1.2"
+UA = "Mozilla/5.0 FrontierOfflineBuild/1.3"
 
 CORE_ASSETS = [
     (1,"vargas_official.png"),(5,"selena_official.png"),(9,"lance_official.png"),(13,"eze_official.png"),(17,"atro_official.png"),(21,"magress_official.png"),
     (25,"zelgal_official.png"),(28,"zephu_official.png"),(31,"lario_official.png"),(34,"weiss_official.png"),(37,"luna_official.png"),(40,"mifune_official.png"),
     (43,"enemy_moerus.png"),(45,"enemy_mizurus.png"),(47,"enemy_morirus.png"),(49,"enemy_rairus.png"),(278,"enemy_caitsith.png"),(279,"enemy_imp.png")
 ]
-EXTRA_IDS = list(range(50, 121))
+EXTRA_IDS = list(range(50, 151))
 ASSETS = CORE_ASSETS + [(no, f"archive_unit_{no:04d}.png") for no in EXTRA_IDS]
 
-# Preservation resources catalogued by The Spriters Resource. These are optional because
-# its CDN occasionally rejects CI traffic; successful downloads are bundled into the APK.
+# Preserved Brave Frontier/Brave Frontier Memories visual sheets used as references and,
+# when the CDN permits CI access, bundled directly into the offline APK.
 TSR_SINGLE = [
     ("https://www.spriters-resource.com/media/assets/95/95591.png", "bfm_backgrounds.png"),
+    ("https://www.spriters-resource.com/media/assets/95/95592.png", "bfm_dialogue_portraits.png"),
     ("https://www.spriters-resource.com/media/assets/95/95596.png", "bfm_hud.png"),
     ("https://www.spriters-resource.com/media/assets/95/95595.png", "bfm_special_battle.png"),
     ("https://www.spriters-resource.com/media/assets/95/95593.png", "bfm_field_sprites.png"),
@@ -85,7 +86,6 @@ def extract_tsr_zip(url, label):
         if "unit_anime_" not in low and "unit_ills_full_" not in low: continue
         payload=z.read(member)
         if len(payload)<3000: continue
-        # Preserve canonical names so Godot code can address sprite sheets directly.
         dest=base
         with open(os.path.join(OUT,dest),"wb") as f:f.write(payload)
         added.append({"kind":"sprite_sheet","pack":label,"file":dest,"url":url,"bytes":len(payload),"content_type":"image/png"})
@@ -125,8 +125,8 @@ def main():
     with open(os.path.join(OUT,"manifest.json"),"w",encoding="utf-8") as f:
         json.dump({"assets":manifest,"failures":failures,"count":len(manifest),"bytes":total},f,indent=2)
     print(f"Bundled {len(manifest)} assets / {total/1024/1024:.2f} MiB")
-    if len(manifest) < 30 or total < 2_000_000:
-        print("Asset payload too small; refusing to produce another deceptively tiny APK.",file=sys.stderr)
+    if len(manifest) < 40 or total < 3_000_000:
+        print("Asset payload too small for the classic UI milestone; refusing export.",file=sys.stderr)
         return 2
     return 0
 
