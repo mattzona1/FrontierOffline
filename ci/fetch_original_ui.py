@@ -3,10 +3,9 @@ import os, json, urllib.request, urllib.parse
 
 OUT = "assets/bf/original"
 BASE = "https://raw.githubusercontent.com/aMytho/brave-frontier-godot/main/"
-UA = "FrontierOfflineBuild/2.1"
+UA = "FrontierOfflineBuild/2.2"
 
 ASSETS = {
-    # Original/preserved battle interface
     "battle_ui.png": "Battle/UI/battle_ui.png",
     "battle_header.png": "Battle/UI/battle_header_ip5.png",
     "battle_auto_up.png": "Battle/UI/battle_auto_btn1.png",
@@ -15,8 +14,9 @@ ASSETS = {
     "battle_speed_down.png": "Battle/UI/battle_speed_btn2_1.png",
     "battle_target_mark.png": "Battle/UI/battle_target_mark.png",
     "battle_footer.png": "Battle/UI/iphx_footer.png",
-    # Original/preserved home interface
     "menu_base.jpg": "Menu/base.jpg",
+    "menu_header.png": "Menu/Header/header.png",
+    "menu_header_ui.png": "Menu/Header/header_ui.png",
     "menu_footer_base.png": "Menu/Footer/footer_base.png",
     "menu_footer_buttons.png": "Menu/Footer/footer_btn.png",
     "menu_home.png": "Menu/Footer/home.png",
