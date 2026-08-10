@@ -3,7 +3,7 @@ extends Node
 const OFFICIAL_ROOT := "https://www.bravefrontier.jp"
 
 # Silent background cache. No gallery/menu is exposed to the player.
-# First six are the classic heroes; second six broaden the early summon roster.
+# Heroes + an initial enemy set used by the first quest/battle milestone.
 const ASSETS := [
     {"name":"Vargas","no":1,"cache":"vargas_official.png"},
     {"name":"Selena","no":5,"cache":"selena_official.png"},
@@ -16,7 +16,13 @@ const ASSETS := [
     {"name":"Lario","no":31,"cache":"lario_official.png"},
     {"name":"Weiss","no":34,"cache":"weiss_official.png"},
     {"name":"Luna","no":37,"cache":"luna_official.png"},
-    {"name":"Mifune","no":40,"cache":"mifune_official.png"}
+    {"name":"Mifune","no":40,"cache":"mifune_official.png"},
+    {"name":"Moerus","no":43,"cache":"enemy_moerus.png"},
+    {"name":"Mizurus","no":45,"cache":"enemy_mizurus.png"},
+    {"name":"Morirus","no":47,"cache":"enemy_morirus.png"},
+    {"name":"Rairus","no":49,"cache":"enemy_rairus.png"},
+    {"name":"Cait Sith","no":278,"cache":"enemy_caitsith.png"},
+    {"name":"Imp","no":279,"cache":"enemy_imp.png"}
 ]
 
 var request: HTTPRequest
@@ -45,16 +51,13 @@ func _queue_missing() -> void:
     _next()
 
 func _next() -> void:
-    if pending.is_empty():
-        return
-    if request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
-        return
+    if pending.is_empty(): return
+    if request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED: return
     active = pending.pop_front()
     phase = "page"
     var url := "%s/library/bf1/bf1_full.php?no=%d" % [OFFICIAL_ROOT, int(active["no"])]
-    var err := request.request(url, ["User-Agent: Mozilla/5.0 FrontierOffline/0.3"])
-    if err != OK:
-        call_deferred("_next")
+    var err := request.request(url, ["User-Agent: Mozilla/5.0 FrontierOffline/0.4"])
+    if err != OK: call_deferred("_next")
 
 func _completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
     if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 400:
@@ -66,9 +69,8 @@ func _completed(result: int, response_code: int, _headers: PackedStringArray, bo
             call_deferred("_next")
             return
         phase = "image"
-        var err := request.request(image_url, ["User-Agent: Mozilla/5.0 FrontierOffline/0.3", "Referer: %s/" % OFFICIAL_ROOT])
-        if err != OK:
-            call_deferred("_next")
+        var err := request.request(image_url, ["User-Agent: Mozilla/5.0 FrontierOffline/0.4", "Referer: %s/" % OFFICIAL_ROOT])
+        if err != OK: call_deferred("_next")
         return
     if phase == "image":
         var image := Image.new()
@@ -86,12 +88,10 @@ func _extract_image(html: String) -> String:
     for match in re.search_all(html):
         var candidate := match.get_string(1).replace("&amp;", "&")
         var low := candidate.to_lower()
-        if low.contains("logo") or low.contains("icon") or low.contains("btn") or low.contains("common"):
-            continue
+        if low.contains("logo") or low.contains("icon") or low.contains("btn") or low.contains("common"): continue
         var absolute := _absolute(candidate)
         if fallback == "": fallback = absolute
-        if low.contains("full") or low.contains("unit") or low.contains("chara") or low.contains("large"):
-            return absolute
+        if low.contains("full") or low.contains("unit") or low.contains("chara") or low.contains("large"): return absolute
     return fallback
 
 func _absolute(path: String) -> String:
