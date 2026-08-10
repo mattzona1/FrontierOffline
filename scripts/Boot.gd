@@ -35,11 +35,11 @@ func _draw_boot_screen() -> void:
     var sub := Label.new(); sub.text = "OFFLINE REBUILD"; sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; sub.add_theme_font_size_override("font_size",20); sub.add_theme_color_override("font_color",MUTED); root.add_child(sub)
     status_label = Label.new(); status_label.text = "Loading Grand Gaia..."; status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; status_label.add_theme_font_size_override("font_size",19); status_label.add_theme_color_override("font_color",TEXT); root.add_child(status_label)
     var bar := ProgressBar.new(); bar.max_value=100;bar.value=28;bar.custom_minimum_size=Vector2(520,28);bar.show_percentage=false;root.add_child(bar)
-    var tip := Label.new(); tip.text="Preparing battlefields and unit archive...";tip.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;tip.add_theme_font_size_override("font_size",14);tip.add_theme_color_override("font_color",Color("8399b6"));root.add_child(tip)
+    var tip := Label.new(); tip.text="Loading bundled battle art...";tip.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;tip.add_theme_font_size_override("font_size",14);tip.add_theme_color_override("font_color",Color("8399b6"));root.add_child(tip)
 
 func _boot_game() -> void:
     await get_tree().create_timer(0.35).timeout
-    status_label.text = "Preparing unit archive..."
+    status_label.text = "Preparing offline unit archive..."
     _start_asset_cache()
     await get_tree().create_timer(0.30).timeout
     var script = load("res://scripts/BraveMain.gd")
@@ -55,7 +55,6 @@ func _boot_game() -> void:
     await get_tree().process_frame
     _start_ui_enhancer(game)
     _start_battle_feel(game)
-    _start_battle_cinematics(game)
     if is_instance_valid(status_label):
         var boot_root := status_label.get_parent()
         if is_instance_valid(boot_root): boot_root.queue_free()
@@ -74,11 +73,3 @@ func _start_battle_feel(game: Node) -> void:
     var battle_script = load("res://scripts/BattleFeelService.gd")
     if battle_script == null: return
     var service := Node.new(); service.set_script(battle_script); service.set("game", game); add_child(service)
-
-func _start_battle_cinematics(game: Node) -> void:
-    var cinematic_script = load("res://scripts/BattleCinematicService.gd")
-    if cinematic_script == null: return
-    var service := Node.new()
-    service.set_script(cinematic_script)
-    service.set("game", game)
-    add_child(service)
