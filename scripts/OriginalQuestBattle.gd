@@ -104,7 +104,6 @@ func _build_original_header() -> void:
     root.add_child(menu)
 
 func _build_field() -> void:
-    # Use only preserved Brave Frontier artwork for the field. No generated hills/gradients.
     var bg := TextureRect.new()
     bg.position = Vector2(0,82)
     bg.size = Vector2(720,545)
@@ -238,7 +237,7 @@ func _card_input(event: InputEvent, slot: int) -> void:
         else:
             var start: Vector2 = touch_start.get(slot,event.position)
             touch_start.erase(slot)
-            var dy := event.position.y - start.y
+            var dy: float = float(event.position.y - start.y)
             if dy < -45.0:
                 _burst(slot)
             elif start.distance_to(event.position) < 55.0:
@@ -276,7 +275,7 @@ func _normal_attack(slot: int) -> void:
     busy = true
     acted.append(slot)
     var card: Control = unit_cards[slot]
-    var start := card.position
+    var start: Vector2 = card.position
     var tw := create_tween()
     tw.tween_property(card,"position",start+Vector2(-18,-8),0.07)
     tw.tween_property(card,"position",start,0.10)
@@ -319,7 +318,8 @@ func _burst(slot: int) -> void:
     game.set("enemy_hp",maxi(0,int(game.get("enemy_hp"))-damage))
     _damage_popup(damage,true)
     await get_tree().create_timer(0.30).timeout
-    cut.queue_free(); title.queue_free()
+    cut.queue_free()
+    title.queue_free()
     _sync()
     if int(game.get("enemy_hp")) <= 0:
         await _defeated()
@@ -372,7 +372,8 @@ func _sync() -> void:
     for i in range(mini(6,unit_cards.size())):
         var u := _unit(i)
         var maxhp := int(game.call("_unit_hp",u))
-        hp_bars[i].max_value=maxhp; hp_bars[i].value=_hp(i)
+        hp_bars[i].max_value=maxhp
+        hp_bars[i].value=_hp(i)
         bb_bars[i].value=int(u.get("bb",0))
         var t=unit_cards[i].find_child("HPText",true,false)
         if t is Label: t.text="HP %d/%d"%[_hp(i),maxhp]
@@ -381,14 +382,19 @@ func _sync() -> void:
 func _damage_popup(amount:int, burst:=false) -> void:
     var l := _label(str(amount),Vector2(268,350),Vector2(190,70),34 if burst else 28,Color("fff0a3"),HORIZONTAL_ALIGNMENT_CENTER)
     l.z_index=70
-    var tw:=create_tween();tw.set_parallel(true);tw.tween_property(l,"position:y",300,0.36);tw.tween_property(l,"modulate:a",0.0,0.42);tw.tween_callback(l.queue_free).set_delay(0.45)
+    var tw:=create_tween()
+    tw.set_parallel(true)
+    tw.tween_property(l,"position:y",300,0.36)
+    tw.tween_property(l,"modulate:a",0.0,0.42)
+    tw.tween_callback(l.queue_free).set_delay(0.45)
 
 func _enemy() -> Dictionary:
     var qs=game.get("quests")
     return qs[int(game.get("current_quest"))]["waves"][int(game.get("current_wave"))]
 
 func _unit(slot:int)->Dictionary:
-    var inv=game.get("inventory");var squad=game.get("squad")
+    var inv=game.get("inventory")
+    var squad=game.get("squad")
     return inv[int(squad[slot])]
 
 func _def(unit:Dictionary)->Dictionary:
@@ -430,7 +436,26 @@ func _original_texture(filename:String)->Texture2D:
     return null
 
 func _label(text:String,pos:Vector2,size:Vector2,fs:int,color:=TEXT,align:=HORIZONTAL_ALIGNMENT_LEFT)->Label:
-    var l:=Label.new();l.text=text;l.position=pos;l.size=size;l.add_theme_font_size_override("font_size",fs);l.add_theme_color_override("font_color",color);l.horizontal_alignment=align;l.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;l.mouse_filter=Control.MOUSE_FILTER_IGNORE;root.add_child(l);return l
+    var l:=Label.new()
+    l.text=text
+    l.position=pos
+    l.size=size
+    l.add_theme_font_size_override("font_size",fs)
+    l.add_theme_color_override("font_color",color)
+    l.horizontal_alignment=align
+    l.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+    l.mouse_filter=Control.MOUSE_FILTER_IGNORE
+    root.add_child(l)
+    return l
 
 func _card_label(parent:Node,text:String,pos:Vector2,size:Vector2,fs:int,color:=TEXT)->Label:
-    var l:=Label.new();l.text=text;l.position=pos;l.size=size;l.add_theme_font_size_override("font_size",fs);l.add_theme_color_override("font_color",color);l.vertical_alignment=VERTICAL_ALIGNMENT_CENTER;l.mouse_filter=Control.MOUSE_FILTER_IGNORE;parent.add_child(l);return l
+    var l:=Label.new()
+    l.text=text
+    l.position=pos
+    l.size=size
+    l.add_theme_font_size_override("font_size",fs)
+    l.add_theme_color_override("font_color",color)
+    l.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+    l.mouse_filter=Control.MOUSE_FILTER_IGNORE
+    parent.add_child(l)
+    return l
