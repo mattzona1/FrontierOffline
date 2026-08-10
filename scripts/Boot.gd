@@ -8,8 +8,19 @@ const SAVE_VERSION := 3
 var status_label: Label
 
 func _ready() -> void:
+    _add_visual_backdrop()
     _draw_boot_screen()
     call_deferred("_boot_game")
+
+func _add_visual_backdrop() -> void:
+    var backdrop_script = load("res://scripts/VisualBackdrop.gd")
+    if backdrop_script == null:
+        return
+    var backdrop := Control.new()
+    backdrop.set_script(backdrop_script)
+    backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    add_child(backdrop)
+    move_child(backdrop, 0)
 
 func _draw_boot_screen() -> void:
     var root := VBoxContainer.new()
@@ -63,10 +74,22 @@ func _boot_game() -> void:
     add_child(game)
     await get_tree().process_frame
 
+    _add_tester_overlay(game)
+
     if is_instance_valid(status_label):
         var boot_root := status_label.get_parent()
         if is_instance_valid(boot_root):
             boot_root.queue_free()
+
+func _add_tester_overlay(game: Node) -> void:
+    var overlay_script = load("res://scripts/TesterOverlay.gd")
+    if overlay_script == null:
+        return
+    var overlay := Control.new()
+    overlay.set_script(overlay_script)
+    overlay.set("game", game)
+    overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    add_child(overlay)
 
 func _migrate_legacy_save() -> void:
     if not FileAccess.file_exists("user://save.json"):
