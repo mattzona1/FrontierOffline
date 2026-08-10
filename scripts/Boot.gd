@@ -87,6 +87,7 @@ func _boot_game() -> void:
 
     var gallery := _add_asset_gallery(game)
     _add_runtime_guard(game, gallery)
+    _add_art_integration(game, gallery)
 
     if is_instance_valid(status_label):
         var boot_root := status_label.get_parent()
@@ -114,6 +115,16 @@ func _add_runtime_guard(game: Node, gallery: Node) -> void:
     guard.set("game", game)
     guard.set("gallery", gallery)
     add_child(guard)
+
+func _add_art_integration(game: Node, gallery: Node) -> void:
+    var art_script = load("res://scripts/ArtIntegration.gd")
+    if art_script == null:
+        return
+    var integration := Node.new()
+    integration.set_script(art_script)
+    integration.set("game", game)
+    integration.set("gallery", gallery)
+    add_child(integration)
 
 func _migrate_legacy_save() -> void:
     if not FileAccess.file_exists("user://save.json"):
