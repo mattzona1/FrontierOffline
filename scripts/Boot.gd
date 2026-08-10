@@ -34,20 +34,19 @@ func _draw_boot_screen() -> void:
     var title := Label.new(); title.text = "BRAVE FRONTIER"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size",46); title.add_theme_color_override("font_color",GOLD); root.add_child(title)
     var sub := Label.new(); sub.text = "OFFLINE REBUILD"; sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; sub.add_theme_font_size_override("font_size",20); sub.add_theme_color_override("font_color",MUTED); root.add_child(sub)
     status_label = Label.new(); status_label.text = "Loading Grand Gaia..."; status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; status_label.add_theme_font_size_override("font_size",19); status_label.add_theme_color_override("font_color",TEXT); root.add_child(status_label)
-    var bar := ProgressBar.new(); bar.max_value=100;bar.value=28;bar.custom_minimum_size=Vector2(520,28);bar.show_percentage=false;root.add_child(bar)
-    var tip := Label.new(); tip.text="Loading bundled battle art...";tip.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;tip.add_theme_font_size_override("font_size",14);tip.add_theme_color_override("font_color",Color("8399b6"));root.add_child(tip)
+    var bar := ProgressBar.new(); bar.max_value=100;bar.value=72;bar.custom_minimum_size=Vector2(520,28);bar.show_percentage=false;root.add_child(bar)
+    var tip := Label.new(); tip.text="Preparing classic interface and bundled assets...";tip.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;tip.add_theme_font_size_override("font_size",14);tip.add_theme_color_override("font_color",Color("8399b6"));root.add_child(tip)
 
 func _boot_game() -> void:
-    await get_tree().create_timer(0.35).timeout
+    await get_tree().create_timer(0.25).timeout
     status_label.text = "Preparing offline unit archive..."
     _start_asset_cache()
-    await get_tree().create_timer(0.30).timeout
+    await get_tree().create_timer(0.20).timeout
     var script = load("res://scripts/BraveMain.gd")
     if script == null:
         status_label.text = "Recovery mode: core shell failed to load."
         return
     status_label.text = "Entering Grand Gaia..."
-    await get_tree().create_timer(0.30).timeout
     var game := Control.new()
     game.set_script(script)
     game.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -55,8 +54,8 @@ func _boot_game() -> void:
     await get_tree().process_frame
     _start_first_quest_accuracy(game)
     await get_tree().process_frame
-    _start_ui_enhancer(game)
-    _start_battle_scene(game)
+    _start_classic_presentation(game)
+    _start_classic_battle(game)
     if is_instance_valid(status_label):
         var boot_root := status_label.get_parent()
         if is_instance_valid(boot_root): boot_root.queue_free()
@@ -69,21 +68,14 @@ func _start_asset_cache() -> void:
 func _start_first_quest_accuracy(game: Node) -> void:
     var accuracy_script = load("res://scripts/FirstQuestAccuracy.gd")
     if accuracy_script == null: return
-    var service := Node.new()
-    service.set_script(accuracy_script)
-    service.set("game", game)
-    add_child(service)
+    var service := Node.new(); service.set_script(accuracy_script); service.set("game", game); add_child(service)
 
-func _start_ui_enhancer(game: Node) -> void:
-    var ui_script = load("res://scripts/BraveUIEnhancer.gd")
+func _start_classic_presentation(game: Node) -> void:
+    var ui_script = load("res://scripts/ClassicPresentation.gd")
     if ui_script == null: return
-    var enhancer := Node.new(); enhancer.set_script(ui_script); enhancer.set("game",game); add_child(enhancer)
+    var service := Node.new(); service.set_script(ui_script); service.set("game",game); add_child(service)
 
-func _start_battle_scene(game: Node) -> void:
-    var battle_script = load("res://scripts/BraveBattleScene.gd")
+func _start_classic_battle(game: Node) -> void:
+    var battle_script = load("res://scripts/ClassicBattleScene.gd")
     if battle_script == null: return
-    var scene := Control.new()
-    scene.set_script(battle_script)
-    scene.set("game", game)
-    scene.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    add_child(scene)
+    var scene := Control.new(); scene.set_script(battle_script); scene.set("game",game); scene.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(scene)
