@@ -80,8 +80,8 @@ func _boot_game() -> void:
     await get_tree().process_frame
     _start_first_quest_accuracy(game)
     await get_tree().process_frame
-    _start_classic_presentation(game)
-    _start_classic_battle(game)
+    _start_original_presentation(game)
+    _start_original_battle(game)
     if is_instance_valid(status_label):
         var boot_root := status_label.get_parent()
         if is_instance_valid(boot_root):
@@ -104,8 +104,8 @@ func _start_first_quest_accuracy(game: Node) -> void:
     service.set("game", game)
     add_child(service)
 
-func _start_classic_presentation(game: Node) -> void:
-    var ui_script = load("res://scripts/ClassicPresentationFixed.gd")
+func _start_original_presentation(game: Node) -> void:
+    var ui_script = load("res://scripts/OriginalHomeUI.gd")
     if ui_script == null:
         return
     var service := Node.new()
@@ -113,7 +113,7 @@ func _start_classic_presentation(game: Node) -> void:
     service.set("game",game)
     add_child(service)
 
-func _start_classic_battle(game: Node) -> void:
+func _start_original_battle(game: Node) -> void:
     var battle_script = load("res://scripts/OriginalQuestBattle.gd")
     if battle_script == null:
         return
