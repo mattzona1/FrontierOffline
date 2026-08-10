@@ -3,14 +3,25 @@ extends Control
 const GOLD := Color("f2c14e")
 const TEXT := Color("eef4ff")
 const MUTED := Color("9fb0ca")
-const SAVE_VERSION := 3
+const SAVE_VERSION := 4
+const RESET_MARKER := "user://reset_v021.done"
 
 var status_label: Label
 
 func _ready() -> void:
+    _reset_save_once()
     _add_visual_backdrop()
     _draw_boot_screen()
     call_deferred("_boot_game")
+
+func _reset_save_once() -> void:
+    if FileAccess.file_exists(RESET_MARKER):
+        return
+    if FileAccess.file_exists("user://save.json"):
+        DirAccess.remove_absolute(ProjectSettings.globalize_path("user://save.json"))
+    var marker := FileAccess.open(RESET_MARKER, FileAccess.WRITE)
+    if marker:
+        marker.store_string("Fresh test save created for duplicate-refund milestone.")
 
 func _add_visual_backdrop() -> void:
     var backdrop_script = load("res://scripts/VisualBackdrop.gd")
@@ -41,7 +52,7 @@ func _draw_boot_screen() -> void:
     root.add_child(title)
 
     status_label = Label.new()
-    status_label.text = "Preparing save data..."
+    status_label.text = "Preparing fresh test save..."
     status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     status_label.add_theme_font_size_override("font_size", 20)
@@ -49,7 +60,7 @@ func _draw_boot_screen() -> void:
     root.add_child(status_label)
 
     var hint := Label.new()
-    hint.text = "Recovery boot • your previous currency and rank will be preserved"
+    hint.text = "Duplicate summons refund their 5 Gems • original art button is forced into Home"
     hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     hint.add_theme_font_size_override("font_size", 15)
@@ -74,33 +85,35 @@ func _boot_game() -> void:
     add_child(game)
     await get_tree().process_frame
 
-    _add_tester_overlay(game)
-    _add_asset_gallery(game)
+    var gallery := _add_asset_gallery(game)
+    _add_runtime_guard(game, gallery)
 
     if is_instance_valid(status_label):
         var boot_root := status_label.get_parent()
         if is_instance_valid(boot_root):
             boot_root.queue_free()
 
-func _add_tester_overlay(game: Node) -> void:
-    var overlay_script = load("res://scripts/TesterOverlay.gd")
-    if overlay_script == null:
-        return
-    var overlay := Control.new()
-    overlay.set_script(overlay_script)
-    overlay.set("game", game)
-    overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    add_child(overlay)
-
-func _add_asset_gallery(game: Node) -> void:
+func _add_asset_gallery(game: Node) -> Node:
     var gallery_script = load("res://scripts/AssetGallery.gd")
     if gallery_script == null:
-        return
+        return null
     var gallery := Control.new()
     gallery.set_script(gallery_script)
     gallery.set("game", game)
     gallery.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    gallery.z_index = 50
     add_child(gallery)
+    return gallery
+
+func _add_runtime_guard(game: Node, gallery: Node) -> void:
+    var guard_script = load("res://scripts/RuntimeGuard.gd")
+    if guard_script == null:
+        return
+    var guard := Node.new()
+    guard.set_script(guard_script)
+    guard.set("game", game)
+    guard.set("gallery", gallery)
+    add_child(guard)
 
 func _migrate_legacy_save() -> void:
     if not FileAccess.file_exists("user://save.json"):
