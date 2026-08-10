@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-import os, json, urllib.request
+import os, json, urllib.request, urllib.parse
 
 OUT = "assets/bf/original"
 BASE = "https://raw.githubusercontent.com/aMytho/brave-frontier-godot/main/"
-UA = "FrontierOfflineBuild/2.0"
+UA = "FrontierOfflineBuild/2.1"
 
 ASSETS = {
+    # Original/preserved battle interface
     "battle_ui.png": "Battle/UI/battle_ui.png",
     "battle_header.png": "Battle/UI/battle_header_ip5.png",
     "battle_auto_up.png": "Battle/UI/battle_auto_btn1.png",
@@ -14,6 +15,19 @@ ASSETS = {
     "battle_speed_down.png": "Battle/UI/battle_speed_btn2_1.png",
     "battle_target_mark.png": "Battle/UI/battle_target_mark.png",
     "battle_footer.png": "Battle/UI/iphx_footer.png",
+    # Original/preserved home interface
+    "menu_base.jpg": "Menu/base.jpg",
+    "menu_footer_base.png": "Menu/Footer/footer_base.png",
+    "menu_footer_buttons.png": "Menu/Footer/footer_btn.png",
+    "menu_home.png": "Menu/Footer/home.png",
+    "menu_unit.png": "Menu/Footer/unit.png",
+    "menu_town.png": "Menu/Footer/town.png",
+    "menu_shop.png": "Menu/Footer/shop.png",
+    "menu_summon.png": "Menu/Footer/summon.png",
+    "menu_social.png": "Menu/Footer/social.png",
+    "menu_info_button.png": "Menu/Buttons and Banner/home_new_btn_info1.png",
+    "menu_button_frame.png": "Menu/Buttons and Banner/home_new_btn_box1.png",
+    "menu_banner.png": "Menu/Buttons and Banner/banner_20180903_discount_282-92.png",
 }
 
 def get(url):
@@ -26,7 +40,7 @@ def main():
     manifest=[]
     total=0
     for dest, src in ASSETS.items():
-        url=BASE+src
+        url=BASE+urllib.parse.quote(src, safe="/")
         data, ctype=get(url)
         if len(data) < 1000:
             raise RuntimeError(f"Original asset too small: {src}")
