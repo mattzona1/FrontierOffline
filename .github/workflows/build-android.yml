@@ -1,0 +1,81 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: "4.7.1"
+  BASE_VERSION: "0.1"
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-24.04
+    container:
+      image: barichello/godot-ci:4.7.1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare export templates
+        shell: bash
+        run: |
+          mkdir -p ~/.local/share/godot/export_templates ~/.config
+          if [ -d /root/.config/godot ]; then cp -a /root/.config/godot ~/.config/; fi
+          if [ -d "/root/.local/share/godot/export_templates/${GODOT_VERSION}.stable" ]; then
+            cp -a "/root/.local/share/godot/export_templates/${GODOT_VERSION}.stable" ~/.local/share/godot/export_templates/
+          fi
+
+      - name: Set build version
+        shell: bash
+        run: |
+          VERSION_NAME="${BASE_VERSION}.${GITHUB_RUN_NUMBER}"
+          VERSION_CODE="${GITHUB_RUN_NUMBER}"
+          sed -i "s/version\/code=.*/version\/code=${VERSION_CODE}/" export_presets.cfg
+          sed -i "s/version\/name=.*/version\/name=\"${VERSION_NAME}\"/" export_presets.cfg
+          sed -i "s/config\/version=.*/config\/version=\"${VERSION_NAME}\"/" project.godot
+          echo "VERSION_NAME=${VERSION_NAME}" >> "$GITHUB_ENV"
+          echo "APK_NAME=FrontierOffline-v${VERSION_NAME}.apk" >> "$GITHUB_ENV"
+
+      - name: Restore development signing key
+        shell: bash
+        run: |
+          base64 --decode ci/frontier-offline-dev.keystore.b64 > ci/frontier-offline-dev.keystore
+          chmod 600 ci/frontier-offline-dev.keystore
+          echo "GODOT_ANDROID_KEYSTORE_RELEASE_PATH=${GITHUB_WORKSPACE}/ci/frontier-offline-dev.keystore" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_RELEASE_USER=frontieroffline" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=frontierdev2026" >> "$GITHUB_ENV"
+
+      - name: Export APK
+        shell: bash
+        run: |
+          mkdir -p builds
+          godot --headless --path . --export-release "Android APK" "builds/${APK_NAME}"
+          test -s "builds/${APK_NAME}"
+          sha256sum "builds/${APK_NAME}" > "builds/${APK_NAME}.sha256"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FrontierOffline-Android-${{ env.VERSION_NAME }}
+          path: |
+            builds/${{ env.APK_NAME }}
+            builds/${{ env.APK_NAME }}.sha256
+          if-no-files-found: error
+
+      - name: Publish manual test release
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-v${{ env.VERSION_NAME }}
+          name: Frontier Offline Android v${{ env.VERSION_NAME }}
+          prerelease: true
+          generate_release_notes: true
+          files: |
+            builds/${{ env.APK_NAME }}
+            builds/${{ env.APK_NAME }}.sha256
