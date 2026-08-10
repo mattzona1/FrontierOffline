@@ -55,6 +55,7 @@ func _boot_game() -> void:
     await get_tree().process_frame
     _start_ui_enhancer(game)
     _start_battle_feel(game)
+    _start_battle_cinematics(game)
     if is_instance_valid(status_label):
         var boot_root := status_label.get_parent()
         if is_instance_valid(boot_root): boot_root.queue_free()
@@ -73,3 +74,11 @@ func _start_battle_feel(game: Node) -> void:
     var battle_script = load("res://scripts/BattleFeelService.gd")
     if battle_script == null: return
     var service := Node.new(); service.set_script(battle_script); service.set("game", game); add_child(service)
+
+func _start_battle_cinematics(game: Node) -> void:
+    var cinematic_script = load("res://scripts/BattleCinematicService.gd")
+    if cinematic_script == null: return
+    var service := Node.new()
+    service.set_script(cinematic_script)
+    service.set("game", game)
+    add_child(service)
