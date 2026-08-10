@@ -3,12 +3,20 @@ import os, re, sys, json, urllib.request, urllib.parse
 
 ROOT = "https://www.bravefrontier.jp"
 OUT = "assets/bf"
-UA = "Mozilla/5.0 FrontierOfflineBuild/1.0"
-ASSETS = [
+UA = "Mozilla/5.0 FrontierOfflineBuild/1.1"
+
+CORE_ASSETS = [
     (1,"vargas_official.png"),(5,"selena_official.png"),(9,"lance_official.png"),(13,"eze_official.png"),(17,"atro_official.png"),(21,"magress_official.png"),
     (25,"zelgal_official.png"),(28,"zephu_official.png"),(31,"lario_official.png"),(34,"weiss_official.png"),(37,"luna_official.png"),(40,"mifune_official.png"),
     (43,"enemy_moerus.png"),(45,"enemy_mizurus.png"),(47,"enemy_morirus.png"),(49,"enemy_rairus.png"),(278,"enemy_caitsith.png"),(279,"enemy_imp.png")
 ]
+
+# Additional early BF1 archive entries are bundled so the APK really carries a useful
+# offline art library rather than only the handful currently visible in the prototype.
+# Failed/missing archive entries are tolerated; the manifest/size gate below still has
+# to prove that a meaningful payload was actually obtained.
+EXTRA_IDS = list(range(50, 121))
+ASSETS = CORE_ASSETS + [(no, f"archive_unit_{no:04d}.png") for no in EXTRA_IDS]
 
 def get(url, referer=None):
     headers={"User-Agent":UA}
@@ -39,7 +47,6 @@ def save_best(no, filename):
     html=body.decode("utf-8","ignore")
     urls=candidates(html)
     if not urls: raise RuntimeError(f"no image candidate for unit {no}")
-    # Prefer high-scoring original image; skip tiny responses.
     for score,url in urls:
         try:
             data,ctype=get(url, ROOT+"/")
@@ -67,8 +74,7 @@ def main():
     with open(os.path.join(OUT,"manifest.json"),"w",encoding="utf-8") as f:
         json.dump({"assets":manifest,"failures":failures,"count":len(manifest),"bytes":total},f,indent=2)
     print(f"Bundled {len(manifest)} assets / {total/1024/1024:.2f} MiB")
-    # The build must contain a meaningful offline art payload.
-    if len(manifest) < 12 or total < 2_000_000:
+    if len(manifest) < 30 or total < 2_000_000:
         print("Asset payload too small; refusing to produce another deceptively tiny APK.",file=sys.stderr)
         return 2
     return 0
