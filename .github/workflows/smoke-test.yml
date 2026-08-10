@@ -1,0 +1,28 @@
+name: Startup Smoke Test
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.7.1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run main scene briefly
+        shell: bash
+        run: |
+          set -o pipefail
+          timeout 8s godot --headless --path . 2>&1 | tee smoke.log || code=$?
+          code=${code:-0}
+          if grep -E "SCRIPT ERROR|ERROR:.*(Invalid|Cannot|Attempt|Nonexistent|Nil)|Parse Error" smoke.log; then
+            echo "Startup smoke test found a runtime/script error."
+            exit 1
+          fi
+          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then
+            exit "$code"
+          fi
+          echo "Startup smoke test completed without detected script errors."
