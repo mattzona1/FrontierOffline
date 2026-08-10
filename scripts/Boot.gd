@@ -54,7 +54,7 @@ func _boot_game() -> void:
     add_child(game)
     await get_tree().process_frame
     _start_ui_enhancer(game)
-    _start_battle_feel(game)
+    _start_battle_scene(game)
     if is_instance_valid(status_label):
         var boot_root := status_label.get_parent()
         if is_instance_valid(boot_root): boot_root.queue_free()
@@ -69,7 +69,11 @@ func _start_ui_enhancer(game: Node) -> void:
     if ui_script == null: return
     var enhancer := Node.new(); enhancer.set_script(ui_script); enhancer.set("game",game); add_child(enhancer)
 
-func _start_battle_feel(game: Node) -> void:
-    var battle_script = load("res://scripts/BattleFeelService.gd")
+func _start_battle_scene(game: Node) -> void:
+    var battle_script = load("res://scripts/BraveBattleScene.gd")
     if battle_script == null: return
-    var service := Node.new(); service.set_script(battle_script); service.set("game", game); add_child(service)
+    var scene := Control.new()
+    scene.set_script(battle_script)
+    scene.set("game", game)
+    scene.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    add_child(scene)
