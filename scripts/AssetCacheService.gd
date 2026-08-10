@@ -1,9 +1,6 @@
 extends Node
 
 const OFFICIAL_ROOT := "https://www.bravefrontier.jp"
-
-# Silent background cache. No gallery/menu is exposed to the player.
-# Heroes + an initial enemy set used by the first quest/battle milestone.
 const ASSETS := [
     {"name":"Vargas","no":1,"cache":"vargas_official.png"},
     {"name":"Selena","no":5,"cache":"selena_official.png"},
@@ -32,6 +29,7 @@ var phase := ""
 
 func _ready() -> void:
     process_mode = Node.PROCESS_MODE_ALWAYS
+    _seed_bundled_assets()
     request = HTTPRequest.new()
     request.timeout = 20.0
     add_child(request)
@@ -42,6 +40,20 @@ func _cache_path(filename: String) -> String:
     var dir := "user://bf_assets"
     DirAccess.make_dir_absolute(ProjectSettings.globalize_path(dir))
     return "%s/%s" % [dir, filename]
+
+func _seed_bundled_assets() -> void:
+    for item in ASSETS:
+        var filename := str(item["cache"])
+        var dst := _cache_path(filename)
+        if FileAccess.file_exists(dst):
+            continue
+        var src := "res://assets/bf/%s" % filename
+        if not FileAccess.file_exists(src):
+            continue
+        var input := FileAccess.open(src, FileAccess.READ)
+        var output := FileAccess.open(dst, FileAccess.WRITE)
+        if input != null and output != null:
+            output.store_buffer(input.get_buffer(input.get_length()))
 
 func _queue_missing() -> void:
     pending.clear()
@@ -56,7 +68,7 @@ func _next() -> void:
     active = pending.pop_front()
     phase = "page"
     var url := "%s/library/bf1/bf1_full.php?no=%d" % [OFFICIAL_ROOT, int(active["no"])]
-    var err := request.request(url, ["User-Agent: Mozilla/5.0 FrontierOffline/0.4"])
+    var err := request.request(url, ["User-Agent: Mozilla/5.0 FrontierOffline/0.5"])
     if err != OK: call_deferred("_next")
 
 func _completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
@@ -69,7 +81,7 @@ func _completed(result: int, response_code: int, _headers: PackedStringArray, bo
             call_deferred("_next")
             return
         phase = "image"
-        var err := request.request(image_url, ["User-Agent: Mozilla/5.0 FrontierOffline/0.4", "Referer: %s/" % OFFICIAL_ROOT])
+        var err := request.request(image_url, ["User-Agent: Mozilla/5.0 FrontierOffline/0.5", "Referer: %s/" % OFFICIAL_ROOT])
         if err != OK: call_deferred("_next")
         return
     if phase == "image":
