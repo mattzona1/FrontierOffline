@@ -1,35 +1,42 @@
 extends Control
 
-const GOLD := Color("f2c14e")
-const TEXT := Color("eef4ff")
-const MUTED := Color("9fb0ca")
-const RED := Color("ff6b6b")
-const GREEN := Color("6ee7a8")
-const PANEL_2 := Color("223451")
-const SAVE_VERSION := 3
+const BUILD_LABEL := "VISUAL MILESTONE • v0.2.0"
+const SAVE_VERSION := 4
+const GOLD := Color("f6c85f")
+const TEXT := Color("f4f7ff")
+const MUTED := Color("aebbd2")
+const PANEL := Color("17243a")
+const PANEL_2 := Color("243a5b")
+const PANEL_3 := Color("102033")
+const GREEN := Color("72e6a4")
+const RED := Color("ff7272")
 
-var gems: int = 20
-var gold: int = 1000
-var rank: int = 1
-var rank_xp: int = 0
-var selected: int = 0
-var unlocked_quest: int = 0
+var gems := 20
+var gold := 1000
+var rank := 1
+var rank_xp := 0
+var unlocked_quest := 0
 var cleared_quests: Array = []
-var materials: Dictionary = {"Ember":0,"Tide":0,"Verdant":0,"Volt":0,"Lumen":0,"Dusk":0}
-var squad: Array = [0,1,2,3,4,5]
+var materials := {"Ember":0,"Tide":0,"Verdant":0,"Volt":0,"Lumen":0,"Dusk":0}
 var inventory: Array = []
+var squad: Array = [0,1,2,3,4,5]
+var selected := 0
 
 var body: VBoxContainer
 var status: Label
 var current_quest: Dictionary = {}
-var current_wave: int = 0
-var enemy_hp: int = 0
-var enemy_max_hp: int = 0
-var battle_active: bool = false
+var current_wave := 0
+var enemy_hp := 0
+var enemy_max_hp := 0
 var battle_hp: Array = []
-var last_attack_ms: int = 0
-var last_attacker: int = -1
-var spark_chain: int = 0
+var battle_active := false
+var last_attack_ms := 0
+var last_attacker := -1
+var spark_chain := 0
+var training_mode := false
+var training_single_slot := -1
+var training_element := "Neutral"
+var training_max_hp := 25000
 
 var unit_defs: Array = [
     {"name":"Kael","title":"Ember Squire","element":"Fire","rarity":3,"base_hp":920,"base_atk":410,"hits":5,"bb_name":"Blazing Arc","leader":"Fire units gain 15% ATK."},
@@ -64,13 +71,24 @@ func _ready() -> void:
     _home()
 
 func _build_shell() -> void:
+    var bg := ColorRect.new()
+    bg.color = Color("07101d")
+    bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    add_child(bg)
+
+    var glow := ColorRect.new()
+    glow.color = Color("0e2941")
+    glow.position = Vector2(0, 0)
+    glow.size = Vector2(720, 210)
+    add_child(glow)
+
     var root := VBoxContainer.new()
     root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    root.offset_left = 16
-    root.offset_right = -16
-    root.offset_top = 18
-    root.offset_bottom = -18
-    root.add_theme_constant_override("separation", 10)
+    root.offset_left = 14
+    root.offset_right = -14
+    root.offset_top = 14
+    root.offset_bottom = -14
+    root.add_theme_constant_override("separation", 8)
     add_child(root)
 
     var title := Label.new()
@@ -79,6 +97,13 @@ func _build_shell() -> void:
     title.add_theme_font_size_override("font_size", 34)
     title.add_theme_color_override("font_color", GOLD)
     root.add_child(title)
+
+    var build := Label.new()
+    build.text = BUILD_LABEL
+    build.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    build.add_theme_font_size_override("font_size", 15)
+    build.add_theme_color_override("font_color", GREEN)
+    root.add_child(build)
 
     status = Label.new()
     status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -92,8 +117,484 @@ func _build_shell() -> void:
 
     body = VBoxContainer.new()
     body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    body.add_theme_constant_override("separation", 10)
+    body.add_theme_constant_override("separation", 9)
     scroll.add_child(body)
+
+func _home() -> void:
+    battle_active = false
+    training_mode = false
+    _clear()
+    _refresh()
+    _hero_panel("GRAND GAIA", "Visual milestone is active", Color("173e62"))
+
+    var squad_strip := HBoxContainer.new()
+    squad_strip.add_theme_constant_override("separation", 5)
+    body.add_child(squad_strip)
+    for s in range(6):
+        squad_strip.add_child(_mini_unit_card(s))
+
+    _add_button("⚔  QUESTS", _quest_select)
+    _add_button("🎯  TRAINING HALL", _training_menu)
+    _add_button("✦  SUMMON GATE", _summon)
+    _add_button("👥  SQUAD", _squad_menu)
+    _add_button("📖  UNITS", _units_menu)
+    _add_button("◇  MATERIALS", _materials)
+
+    _heading("TESTER GEM CONSOLE", "These buttons are intentionally permanent in your private test build")
+    var gems_row := HBoxContainer.new()
+    gems_row.add_theme_constant_override("separation", 8)
+    body.add_child(gems_row)
+    gems_row.add_child(_small_button("+5", func(): _give_gems(5)))
+    gems_row.add_child(_small_button("+50", func(): _give_gems(50)))
+    gems_row.add_child(_small_button("+500", func(): _give_gems(500)))
+
+func _give_gems(amount: int) -> void:
+    gems += amount
+    _save()
+    _home()
+
+func _mini_unit_card(slot: int) -> Control:
+    var panel := PanelContainer.new()
+    panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    var style := StyleBoxFlat.new()
+    var idx := int(squad[slot])
+    var u: Dictionary = inventory[idx]
+    var d: Dictionary = unit_defs[int(u["def_id"])]
+    style.bg_color = _element_color(str(d["element"])).darkened(0.45)
+    style.corner_radius_top_left = 10
+    style.corner_radius_top_right = 10
+    style.corner_radius_bottom_left = 10
+    style.corner_radius_bottom_right = 10
+    panel.add_theme_stylebox_override("panel", style)
+    var box := VBoxContainer.new()
+    panel.add_child(box)
+    var icon := Label.new()
+    icon.text = _element_symbol(str(d["element"]))
+    icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    icon.add_theme_font_size_override("font_size", 24)
+    box.add_child(icon)
+    var name := Label.new()
+    name.text = str(d["name"]).substr(0, 4)
+    name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    name.add_theme_font_size_override("font_size", 12)
+    box.add_child(name)
+    return panel
+
+func _hero_panel(title_text: String, subtitle: String, color: Color) -> void:
+    var panel := PanelContainer.new()
+    var style := StyleBoxFlat.new()
+    style.bg_color = color
+    style.corner_radius_top_left = 18
+    style.corner_radius_top_right = 18
+    style.corner_radius_bottom_left = 18
+    style.corner_radius_bottom_right = 18
+    style.border_width_left = 2
+    style.border_width_top = 2
+    style.border_width_right = 2
+    style.border_width_bottom = 2
+    style.border_color = GOLD.darkened(0.25)
+    panel.add_theme_stylebox_override("panel", style)
+    panel.custom_minimum_size = Vector2(0, 120)
+    var box := VBoxContainer.new()
+    box.alignment = BoxContainer.ALIGNMENT_CENTER
+    panel.add_child(box)
+    var t := Label.new()
+    t.text = title_text
+    t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    t.add_theme_font_size_override("font_size", 30)
+    t.add_theme_color_override("font_color", GOLD)
+    box.add_child(t)
+    var s := Label.new()
+    s.text = subtitle
+    s.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    s.add_theme_font_size_override("font_size", 17)
+    s.add_theme_color_override("font_color", TEXT)
+    box.add_child(s)
+    body.add_child(panel)
+
+func _quest_select() -> void:
+    _clear()
+    _heading("QUESTS", "Clear routes to unlock the next battle")
+    for i in range(quests.size()):
+        var q: Dictionary = quests[i]
+        if i > unlocked_quest:
+            var locked := _button("🔒  %s" % q["name"], func(): pass)
+            locked.disabled = true
+            body.add_child(locked)
+        else:
+            var mark := "✓ " if cleared_quests.has(i) else ""
+            body.add_child(_button("%s%s\n%s • %d Gold" % [mark, q["name"], q["area"], q["reward_gold"]], func(index=i): _start_quest(index)))
+    _add_button("BACK", _home)
+
+func _start_quest(index: int) -> void:
+    training_mode = false
+    current_quest = quests[index].duplicate(true)
+    current_quest["index"] = index
+    current_wave = 0
+    battle_active = true
+    _prepare_battle()
+    _load_wave()
+
+func _prepare_battle() -> void:
+    last_attack_ms = 0
+    last_attacker = -1
+    spark_chain = 0
+    battle_hp.clear()
+    for slot in squad:
+        var u: Dictionary = inventory[int(slot)]
+        u["bb"] = 0
+        battle_hp.append(_unit_hp(u))
+
+func _load_wave() -> void:
+    var waves: Array = current_quest["waves"]
+    var e: Dictionary = waves[current_wave]
+    enemy_max_hp = int(e["hp"])
+    enemy_hp = enemy_max_hp
+    spark_chain = 0
+    _render_battle("Wave %d begins!" % (current_wave + 1))
+
+func _render_battle(message: String = "") -> void:
+    _clear()
+    _refresh()
+    var e := _battle_enemy()
+    _hero_panel(str(e["name"]), "%s • HP %d / %d" % [e["element"], enemy_hp, enemy_max_hp], _element_color(str(e["element"])).darkened(0.55))
+
+    var enemy_bar := ProgressBar.new()
+    enemy_bar.max_value = enemy_max_hp
+    enemy_bar.value = enemy_hp
+    enemy_bar.custom_minimum_size = Vector2(0, 34)
+    enemy_bar.show_percentage = false
+    body.add_child(enemy_bar)
+
+    var log := Label.new()
+    log.text = message
+    log.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    log.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    log.custom_minimum_size = Vector2(0, 58)
+    log.add_theme_font_size_override("font_size", 17)
+    body.add_child(log)
+
+    var grid := GridContainer.new()
+    grid.columns = 2
+    grid.add_theme_constant_override("h_separation", 8)
+    grid.add_theme_constant_override("v_separation", 8)
+    body.add_child(grid)
+    for s in range(6):
+        var idx := int(squad[s])
+        var u: Dictionary = inventory[idx]
+        var d: Dictionary = unit_defs[int(u["def_id"])]
+        var dead := int(battle_hp[s]) <= 0
+        var wrap := VBoxContainer.new()
+        var atk := _button("%s %s Lv.%d\nHP %d/%d • ATK %d" % [_element_symbol(str(d["element"])), d["name"], u["level"], maxi(0,int(battle_hp[s])), _unit_hp(u), _unit_atk(u)], func(slot=s): _attack_unit(slot))
+        atk.disabled = dead or (training_mode and training_single_slot >= 0 and s != training_single_slot)
+        atk.custom_minimum_size = Vector2(0, 96)
+        _tint_button(atk, _element_color(str(d["element"])).darkened(0.5))
+        wrap.add_child(atk)
+        var bb := _button("BB %d/10 • %s" % [u["bb"], d["bb_name"]], func(slot=s): _brave_burst(slot))
+        bb.disabled = dead or int(u["bb"]) < 10 or (training_mode and training_single_slot >= 0 and s != training_single_slot)
+        bb.custom_minimum_size = Vector2(0, 56)
+        wrap.add_child(bb)
+        grid.add_child(wrap)
+
+    if training_mode:
+        var tools := HBoxContainer.new()
+        tools.add_theme_constant_override("separation", 8)
+        body.add_child(tools)
+        tools.add_child(_small_button("REFILL HP", _training_refill_hp))
+        tools.add_child(_small_button("FILL BB", _training_fill_bb))
+        tools.add_child(_small_button("RESET TARGET", _training_reset_target))
+        _add_button("TRAINING MENU", _training_menu)
+    else:
+        _add_button("RETREAT", _home)
+
+func _battle_enemy() -> Dictionary:
+    if training_mode:
+        return {"name":"Training Golem","element":training_element,"atk":0}
+    var waves: Array = current_quest["waves"]
+    return waves[current_wave]
+
+func _attack_unit(slot: int) -> void:
+    if enemy_hp <= 0 or int(battle_hp[slot]) <= 0:
+        return
+    var idx := int(squad[slot])
+    var u: Dictionary = inventory[idx]
+    var d: Dictionary = unit_defs[int(u["def_id"])]
+    var e := _battle_enemy()
+    var now := Time.get_ticks_msec()
+    var sparked := last_attack_ms > 0 and now - last_attack_ms <= 650 and last_attacker != slot
+    spark_chain = spark_chain + 1 if sparked else 0
+    last_attack_ms = now
+    last_attacker = slot
+    var mult := _element_multiplier(str(d["element"]), str(e["element"]))
+    var damage := int(_unit_atk(u) * randf_range(0.60,0.82) * mult)
+    if sparked:
+        damage = int(damage * (1.18 + minf(0.04 * spark_chain, 0.25)))
+    enemy_hp = maxi(0, enemy_hp - damage)
+    u["bb"] = mini(10, int(u["bb"]) + 2 + (1 if sparked else 0))
+    var msg := "%s dealt %d" % [d["name"], damage]
+    if sparked:
+        msg += " • ✦ SPARK x%d" % (spark_chain + 1)
+    if training_mode:
+        _render_battle(msg + (" • TARGET DOWN" if enemy_hp <= 0 else ""))
+    elif enemy_hp <= 0:
+        _finish_wave(msg)
+    else:
+        _enemy_turn(msg)
+
+func _brave_burst(slot: int) -> void:
+    var idx := int(squad[slot])
+    var u: Dictionary = inventory[idx]
+    if int(u["bb"]) < 10:
+        return
+    var d: Dictionary = unit_defs[int(u["def_id"])]
+    var e := _battle_enemy()
+    var damage := int(_unit_atk(u) * randf_range(1.65,2.0) * _element_multiplier(str(d["element"]), str(e["element"])))
+    u["bb"] = 0
+    enemy_hp = maxi(0, enemy_hp - damage)
+    var msg := "✦ %s • %s • %d damage" % [d["name"], d["bb_name"], damage]
+    if training_mode:
+        _render_battle(msg)
+    elif enemy_hp <= 0:
+        _finish_wave(msg)
+    else:
+        _enemy_turn(msg)
+
+func _enemy_turn(msg: String) -> void:
+    var alive: Array = []
+    for i in range(6):
+        if int(battle_hp[i]) > 0:
+            alive.append(i)
+    if alive.is_empty():
+        _battle_defeat()
+        return
+    var e := _battle_enemy()
+    var slot := int(alive[randi() % alive.size()])
+    var damage := maxi(1, int(e["atk"]) + randi_range(-10,15))
+    battle_hp[slot] = maxi(0, int(battle_hp[slot]) - damage)
+    var any_alive := false
+    for hp in battle_hp:
+        if int(hp) > 0:
+            any_alive = true
+    if not any_alive:
+        _battle_defeat()
+        return
+    _render_battle(msg + "\nEnemy retaliation: %d damage." % damage)
+
+func _finish_wave(msg: String) -> void:
+    var waves: Array = current_quest["waves"]
+    if current_wave + 1 < waves.size():
+        current_wave += 1
+        _load_wave()
+        return
+    battle_active = false
+    var qi := int(current_quest["index"])
+    var first := not cleared_quests.has(qi)
+    gold += int(current_quest["reward_gold"])
+    rank_xp += int(current_quest["rank_xp"])
+    if first:
+        gems += int(current_quest["reward_gems"])
+        cleared_quests.append(qi)
+        unlocked_quest = maxi(unlocked_quest, mini(quests.size()-1, qi+1))
+    var drop := str(current_quest["drop"])
+    materials[drop] = int(materials.get(drop,0)) + randi_range(1,3)
+    _apply_rank_xp()
+    _save()
+    _clear()
+    _hero_panel("QUEST CLEAR", msg, Color("164634"))
+    _add_button("QUESTS", _quest_select)
+    _add_button("HOME", _home)
+
+func _battle_defeat() -> void:
+    _clear()
+    _hero_panel("DEFEAT", "Your squad was overwhelmed", Color("4a2028"))
+    _add_button("TRY AGAIN", func(): _start_quest(int(current_quest["index"])))
+    _add_button("HOME", _home)
+
+func _training_menu() -> void:
+    training_mode = false
+    _clear()
+    _heading("TRAINING HALL", "No rewards, no costs, unlimited testing")
+    _hero_panel("TRAINING GOLEM", "Choose target HP, element, and who attacks", Color("24364d"))
+
+    _heading("TARGET HP", "")
+    var hp_row := HBoxContainer.new()
+    hp_row.add_theme_constant_override("separation", 8)
+    body.add_child(hp_row)
+    hp_row.add_child(_small_button("5K", func(): training_max_hp=5000; _training_menu()))
+    hp_row.add_child(_small_button("25K", func(): training_max_hp=25000; _training_menu()))
+    hp_row.add_child(_small_button("100K", func(): training_max_hp=100000; _training_menu()))
+
+    _heading("TARGET ELEMENT • %s" % training_element, "")
+    var el_grid := GridContainer.new()
+    el_grid.columns = 3
+    body.add_child(el_grid)
+    for el in ["Fire","Water","Earth","Thunder","Light","Dark"]:
+        el_grid.add_child(_small_button("%s %s" % [_element_symbol(el), el], func(element=el): training_element=element; _training_menu()))
+
+    _heading("TEST MODE", "Selected target HP: %d" % training_max_hp)
+    _add_button("FULL SQUAD", func(): _start_training(-1))
+    for s in range(6):
+        var idx := int(squad[s])
+        var u: Dictionary = inventory[idx]
+        var d: Dictionary = unit_defs[int(u["def_id"])]
+        _add_button("SLOT %d • %s" % [s+1,d["name"]], func(slot=s): _start_training(slot))
+    _add_button("BACK", _home)
+
+func _start_training(single_slot: int) -> void:
+    training_mode = true
+    training_single_slot = single_slot
+    training_max_hp = maxi(100, training_max_hp)
+    enemy_max_hp = training_max_hp
+    enemy_hp = enemy_max_hp
+    _prepare_battle()
+    _render_battle("Training ready • no rewards or penalties")
+
+func _training_refill_hp() -> void:
+    for s in range(6):
+        battle_hp[s] = _unit_hp(inventory[int(squad[s])])
+    _render_battle("Squad HP restored")
+
+func _training_fill_bb() -> void:
+    for s in range(6):
+        inventory[int(squad[s])]["bb"] = 10
+    _render_battle("All Brave Bursts charged")
+
+func _training_reset_target() -> void:
+    enemy_max_hp = training_max_hp
+    enemy_hp = enemy_max_hp
+    _render_battle("Training target restored")
+
+func _summon() -> void:
+    _clear()
+    _hero_panel("SUMMON GATE", "5 Gems per summon • 30% featured 4★ rate", Color("3b275d"))
+    var crystal := Label.new()
+    crystal.text = "       ✦\n    ✦  ◇  ✦\n       ✦"
+    crystal.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    crystal.add_theme_font_size_override("font_size", 42)
+    crystal.add_theme_color_override("font_color", Color("c898ff"))
+    body.add_child(crystal)
+    _add_button("SUMMON • 5 GEMS", _do_summon)
+    _add_button("+50 TEST GEMS", func(): _give_gems(50); _summon())
+    _add_button("BACK", _home)
+
+func _do_summon() -> void:
+    if gems < 5:
+        _notice("Not enough Gems.", _summon)
+        return
+    gems -= 5
+    var four: Array = []
+    for i in range(unit_defs.size()):
+        if int(unit_defs[i]["rarity"]) == 4:
+            four.append(i)
+    var chosen := randi() % unit_defs.size()
+    if randf() < 0.30:
+        chosen = int(four[randi() % four.size()])
+    inventory.append(_new_unit(chosen))
+    _save()
+    var d: Dictionary = unit_defs[chosen]
+    _clear()
+    _hero_panel("SUMMON RESULT", "%s, %s" % [d["name"],d["title"]], _element_color(str(d["element"])).darkened(0.45))
+    var result := Label.new()
+    result.text = "%s\n%s • %d★\n\nAdded to inventory" % [_element_symbol(str(d["element"])),d["element"],d["rarity"]]
+    result.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    result.add_theme_font_size_override("font_size", 32)
+    result.add_theme_color_override("font_color", GOLD)
+    body.add_child(result)
+    _add_button("SUMMON AGAIN", _summon)
+    _add_button("UNITS", _units_menu)
+
+func _squad_menu() -> void:
+    _clear()
+    _heading("SQUAD", "Six active slots • slot 1 is Leader")
+    for s in range(6):
+        var idx := int(squad[s])
+        var u: Dictionary = inventory[idx]
+        var d: Dictionary = unit_defs[int(u["def_id"])]
+        var prefix := "★ LEADER • " if s == 0 else ""
+        var b := _button("%s%s %s Lv.%d • %d★" % [prefix,_element_symbol(str(d["element"])),d["name"],u["level"],_unit_rarity(u)], func(slot=s): _choose_squad_unit(slot))
+        _tint_button(b,_element_color(str(d["element"])).darkened(0.55))
+        body.add_child(b)
+    _add_button("BACK", _home)
+
+func _choose_squad_unit(slot: int) -> void:
+    _clear()
+    _heading("CHOOSE UNIT", "Squad slot %d" % (slot+1))
+    for i in range(inventory.size()):
+        var u: Dictionary = inventory[i]
+        var d: Dictionary = unit_defs[int(u["def_id"])]
+        body.add_child(_button("%s %s • Lv.%d • %d★\nHP %d • ATK %d" % [_element_symbol(str(d["element"])),d["name"],u["level"],_unit_rarity(u),_unit_hp(u),_unit_atk(u)], func(index=i,target=slot): _assign_squad(target,index)))
+    _add_button("BACK", _squad_menu)
+
+func _assign_squad(slot: int, index: int) -> void:
+    squad[slot] = index
+    _save()
+    _squad_menu()
+
+func _units_menu() -> void:
+    _clear()
+    _heading("UNIT INVENTORY", "%d owned units" % inventory.size())
+    for i in range(inventory.size()):
+        var u: Dictionary = inventory[i]
+        var d: Dictionary = unit_defs[int(u["def_id"])]
+        var b := _button("%s  %s, %s\nLv.%d • %d★ • HP %d • ATK %d" % [_element_symbol(str(d["element"])),d["name"],d["title"],u["level"],_unit_rarity(u),_unit_hp(u),_unit_atk(u)], func(index=i): _unit_details(index))
+        _tint_button(b,_element_color(str(d["element"])).darkened(0.60))
+        body.add_child(b)
+    _add_button("BACK", _home)
+
+func _unit_details(index: int) -> void:
+    selected = index
+    var u: Dictionary = inventory[index]
+    var d: Dictionary = unit_defs[int(u["def_id"])]
+    _clear()
+    _hero_panel("%s %s" % [_element_symbol(str(d["element"])),d["name"]], d["title"], _element_color(str(d["element"])).darkened(0.5))
+    var info := Label.new()
+    info.text = "%s • %d★ • Level %d\nHP %d   ATK %d   Hits %d\nBB: %s\nLeader: %s\nXP %d/%d" % [d["element"],_unit_rarity(u),u["level"],_unit_hp(u),_unit_atk(u),d["hits"],d["bb_name"],d["leader"],u["xp"],_xp_needed(int(u["level"]))]
+    info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    info.add_theme_font_size_override("font_size", 20)
+    info.add_theme_color_override("font_color", TEXT)
+    body.add_child(info)
+    _add_button("TRAIN • 300 GOLD", func(): _train_unit(index))
+    _add_button("EVOLVE", func(): _evolve_unit(index))
+    _add_button("BACK", _units_menu)
+
+func _train_unit(index: int) -> void:
+    if gold < 300:
+        _notice("Not enough Gold", func(): _unit_details(index))
+        return
+    gold -= 300
+    _add_unit_xp(index,120)
+    _save()
+    _unit_details(index)
+
+func _evolve_unit(index: int) -> void:
+    var u: Dictionary = inventory[index]
+    var d: Dictionary = unit_defs[int(u["def_id"])]
+    if int(u["evo"]) >= 2:
+        _notice("Evolution cap reached",func():_unit_details(index))
+        return
+    var mat := _element_material(str(d["element"]))
+    var need := 2 + int(u["evo"])
+    var cost := 1000 + int(u["evo"])*750
+    if int(materials.get(mat,0)) < need or gold < cost:
+        _notice("Need %d %s materials and %d Gold" % [need,mat,cost],func():_unit_details(index))
+        return
+    materials[mat] -= need
+    gold -= cost
+    u["evo"] += 1
+    u["level"] = 1
+    u["xp"] = 0
+    _save()
+    _unit_details(index)
+
+func _materials() -> void:
+    _clear()
+    _heading("MATERIALS", "Evolution inventory")
+    for key in materials.keys():
+        var l := Label.new()
+        l.text = "%s    x%d" % [key,materials[key]]
+        l.add_theme_font_size_override("font_size",22)
+        body.add_child(l)
+    _add_button("BACK",_home)
 
 func _seed_inventory() -> void:
     if inventory.size() > 0:
@@ -112,408 +613,72 @@ func _repair_state() -> void:
         var u = inventory[i]
         if typeof(u) != TYPE_DICTIONARY:
             inventory[i] = _new_unit(i % unit_defs.size())
-            continue
-        if not u.has("def_id"):
-            u["def_id"] = i % unit_defs.size()
-        u["def_id"] = clampi(int(u["def_id"]), 0, unit_defs.size() - 1)
-        if not u.has("level"): u["level"] = 1
-        if not u.has("xp"): u["xp"] = 0
-        if not u.has("evo"): u["evo"] = 0
-        if not u.has("bb"): u["bb"] = 0
-        if not u.has("locked"): u["locked"] = false
+        else:
+            u["def_id"] = clampi(int(u.get("def_id",i%unit_defs.size())),0,unit_defs.size()-1)
+            u["level"] = maxi(1,int(u.get("level",1)))
+            u["xp"] = maxi(0,int(u.get("xp",0)))
+            u["evo"] = clampi(int(u.get("evo",0)),0,2)
+            u["bb"] = clampi(int(u.get("bb",0)),0,10)
     if squad.size() != 6:
         squad = [0,1,2,3,4,5]
-    for i in range(squad.size()):
-        squad[i] = clampi(int(squad[i]), 0, inventory.size() - 1)
-    unlocked_quest = clampi(unlocked_quest, 0, quests.size() - 1)
-
-func _home() -> void:
-    battle_active = false
-    _clear()
-    _refresh()
-    _heading("GRAND GAIA", "Milestone build • progression systems online")
-    _add_button("QUESTS", _quest_select)
-    _add_button("SQUAD", _squad_menu)
-    _add_button("UNITS", _units_menu)
-    _add_button("SUMMON GATE", _summon)
-    _add_button("MATERIALS", _materials)
-    _add_button("SAVE GAME", func(): _save(); _home())
-
-func _quest_select() -> void:
-    _clear()
-    _heading("QUESTS", "Clear quests to unlock the next route")
-    for i in range(quests.size()):
-        var q: Dictionary = quests[i]
-        if i > unlocked_quest:
-            var locked := _button("LOCKED • %s" % q["name"], func(): pass)
-            locked.disabled = true
-            body.add_child(locked)
-            continue
-        var clear_mark := "CLEAR • " if cleared_quests.has(i) else ""
-        var label := "%s%s\n%s • %d Gold • %d Gem%s" % [clear_mark, q["name"], q["area"], q["reward_gold"], q["reward_gems"], "s" if int(q["reward_gems"]) != 1 else ""]
-        body.add_child(_button(label, func(index=i): _start_quest(index)))
-    _add_button("BACK", _home)
-
-func _start_quest(index: int) -> void:
-    current_quest = quests[index].duplicate(true)
-    current_quest["index"] = index
-    current_wave = 0
-    battle_active = true
-    last_attack_ms = 0
-    last_attacker = -1
-    spark_chain = 0
-    battle_hp.clear()
-    for slot in squad:
-        var inst: Dictionary = inventory[int(slot)]
-        inst["bb"] = 0
-        battle_hp.append(_unit_hp(inst))
-    _load_wave()
-
-func _load_wave() -> void:
-    var waves: Array = current_quest["waves"]
-    var e: Dictionary = waves[current_wave]
-    enemy_max_hp = int(e["hp"])
-    enemy_hp = enemy_max_hp
-    spark_chain = 0
-    _render_battle("Wave %d begins!" % (current_wave + 1))
-
-func _render_battle(message: String = "") -> void:
-    _clear()
-    _refresh()
-    var waves: Array = current_quest["waves"]
-    var e: Dictionary = waves[current_wave]
-    _heading("%s • WAVE %d/%d" % [current_quest["name"], current_wave + 1, waves.size()], "%s • %s" % [e["name"], e["element"]])
-
-    var bar := ProgressBar.new()
-    bar.max_value = enemy_max_hp
-    bar.value = enemy_hp
-    bar.custom_minimum_size = Vector2(0, 34)
-    bar.show_percentage = false
-    body.add_child(bar)
-
-    var hp_label := Label.new()
-    hp_label.text = "Enemy HP %d / %d" % [enemy_hp, enemy_max_hp]
-    hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    hp_label.add_theme_font_size_override("font_size", 18)
-    body.add_child(hp_label)
-
-    var log := Label.new()
-    log.text = message if message != "" else "Tap a unit to attack. Full BB gauges unlock Brave Burst."
-    log.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    log.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    log.custom_minimum_size = Vector2(0, 70)
-    log.add_theme_font_size_override("font_size", 17)
-    body.add_child(log)
-
-    var grid := GridContainer.new()
-    grid.columns = 2
-    grid.add_theme_constant_override("h_separation", 8)
-    grid.add_theme_constant_override("v_separation", 8)
-    body.add_child(grid)
-
-    for s in range(squad.size()):
-        var inv_index := int(squad[s])
-        var u: Dictionary = inventory[inv_index]
-        var d: Dictionary = unit_defs[int(u["def_id"])]
-        var wrap := VBoxContainer.new()
-        wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        var dead := int(battle_hp[s]) <= 0
-        var atk_text := "%s%s Lv.%d\n%s • HP %d/%d\nATK %d" % ["LEADER • " if s == 0 else "", d["name"], u["level"], d["element"], maxi(0, int(battle_hp[s])), _unit_hp(u), _unit_atk(u)]
-        var atk := _button(atk_text, func(slot=s): _attack_unit(slot))
-        atk.disabled = dead
-        atk.custom_minimum_size = Vector2(0, 112)
-        wrap.add_child(atk)
-        var bb := _button("BB %d/10 • %s" % [u["bb"], d["bb_name"]], func(slot=s): _brave_burst(slot))
-        bb.disabled = dead or int(u["bb"]) < 10
-        bb.custom_minimum_size = Vector2(0, 60)
-        wrap.add_child(bb)
-        grid.add_child(wrap)
-    _add_button("RETREAT", _home)
-
-func _attack_unit(slot: int) -> void:
-    if not battle_active or enemy_hp <= 0 or int(battle_hp[slot]) <= 0:
-        return
-    var inv_index := int(squad[slot])
-    var u: Dictionary = inventory[inv_index]
-    var d: Dictionary = unit_defs[int(u["def_id"])]
-    var waves: Array = current_quest["waves"]
-    var e: Dictionary = waves[current_wave]
-    var now := Time.get_ticks_msec()
-    var sparked := last_attack_ms > 0 and now - last_attack_ms <= 650 and last_attacker != slot
-    if sparked:
-        spark_chain += 1
-    else:
-        spark_chain = 0
-    last_attack_ms = now
-    last_attacker = slot
-    var damage := int(_unit_atk(u) * randf_range(0.58, 0.78) * _element_multiplier(str(d["element"]), str(e["element"])) * _leader_attack_multiplier(str(d["element"]), false))
-    if sparked:
-        damage = int(damage * (1.18 + minf(float(spark_chain) * 0.05, 0.30)) * _leader_spark_multiplier())
-    enemy_hp = maxi(0, enemy_hp - damage)
-    u["bb"] = mini(10, int(u["bb"]) + 2 + _leader_bb_bonus() + (1 if sparked else 0))
-    var msg := "%s hits for %d" % [d["name"], damage]
-    if sparked:
-        msg += " • SPARK x%d!" % (spark_chain + 1)
-    if enemy_hp <= 0:
-        _finish_wave(msg)
-    else:
-        _enemy_turn(msg)
-
-func _brave_burst(slot: int) -> void:
-    if not battle_active or enemy_hp <= 0 or int(battle_hp[slot]) <= 0:
-        return
-    var inv_index := int(squad[slot])
-    var u: Dictionary = inventory[inv_index]
-    if int(u["bb"]) < 10:
-        return
-    var d: Dictionary = unit_defs[int(u["def_id"])]
-    var waves: Array = current_quest["waves"]
-    var e: Dictionary = waves[current_wave]
-    var damage := int(_unit_atk(u) * randf_range(1.55, 1.90) * _element_multiplier(str(d["element"]), str(e["element"])) * _leader_attack_multiplier(str(d["element"]), true))
-    u["bb"] = 0
-    enemy_hp = maxi(0, enemy_hp - damage)
-    spark_chain = 0
-    var msg := "%s unleashes %s! %d damage!" % [d["name"], d["bb_name"], damage]
-    if enemy_hp <= 0:
-        _finish_wave(msg)
-    else:
-        _enemy_turn(msg)
-
-func _enemy_turn(player_msg: String) -> void:
-    var alive: Array = []
-    for i in range(battle_hp.size()):
-        if int(battle_hp[i]) > 0:
-            alive.append(i)
-    if alive.is_empty():
-        _battle_defeat()
-        return
-    var waves: Array = current_quest["waves"]
-    var e: Dictionary = waves[current_wave]
-    var slot := int(alive[randi() % alive.size()])
-    var inv_index := int(squad[slot])
-    var u: Dictionary = inventory[inv_index]
-    var d: Dictionary = unit_defs[int(u["def_id"])]
-    var damage := maxi(1, int(e["atk"]) + randi_range(-10, 15))
-    damage = int(float(damage) * _leader_defense_multiplier(str(d["element"])))
-    battle_hp[slot] = maxi(0, int(battle_hp[slot]) - damage)
-    if int(battle_hp[slot]) <= 0:
-        player_msg += "\n%s is knocked out!" % d["name"]
-    else:
-        u["bb"] = mini(10, int(u["bb"]) + 1)
-    var any_alive := false
-    for value in battle_hp:
-        if int(value) > 0:
-            any_alive = true
-            break
-    if not any_alive:
-        _battle_defeat()
-        return
-    _render_battle("%s\n%s retaliates against %s for %d." % [player_msg, e["name"], d["name"], damage])
-
-func _finish_wave(player_msg: String) -> void:
-    var waves: Array = current_quest["waves"]
-    if current_wave + 1 < waves.size():
-        current_wave += 1
-        _load_wave()
-        return
-    battle_active = false
-    var qi := int(current_quest["index"])
-    var first_clear := not cleared_quests.has(qi)
-    gold += int(current_quest["reward_gold"])
-    if first_clear:
-        gems += int(current_quest["reward_gems"])
-    rank_xp += int(current_quest["rank_xp"])
-    var drop := str(current_quest["drop"])
-    materials[drop] = int(materials.get(drop, 0)) + randi_range(1, 3)
-    if first_clear:
-        cleared_quests.append(qi)
-        unlocked_quest = maxi(unlocked_quest, mini(quests.size() - 1, qi + 1))
-    _apply_rank_xp()
-    for slot in squad:
-        _add_unit_xp(int(slot), 20 + qi * 8)
-    _save()
-    _clear()
-    _refresh()
-    _heading("QUEST CLEAR", current_quest["name"])
-    var result := Label.new()
-    result.text = "%s\n\n+%d Gold\n%s\n+%d %s Material" % [player_msg, current_quest["reward_gold"], ("+%d Gems" % current_quest["reward_gems"]) if first_clear else "Repeat clear • no Gem reward", materials[drop], drop]
-    result.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    result.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    result.add_theme_font_size_override("font_size", 22)
-    result.add_theme_color_override("font_color", GREEN)
-    body.add_child(result)
-    _add_button("QUESTS", _quest_select)
-    _add_button("HOME", _home)
-
-func _battle_defeat() -> void:
-    battle_active = false
-    _clear()
-    _heading("DEFEAT", "Your squad was overwhelmed.")
-    _add_button("TRY AGAIN", func(): _start_quest(int(current_quest["index"])))
-    _add_button("HOME", _home)
-
-func _squad_menu() -> void:
-    _clear()
-    _heading("SQUAD", "Tap a slot, then choose an owned unit")
-    for i in range(squad.size()):
-        var inv_index := int(squad[i])
-        var u: Dictionary = inventory[inv_index]
-        var d: Dictionary = unit_defs[int(u["def_id"])]
-        var prefix := "LEADER • " if i == 0 else ""
-        body.add_child(_button("%sSlot %d • %s Lv.%d • %d★" % [prefix, i + 1, d["name"], u["level"], _unit_rarity(u)], func(slot=i): _choose_squad_unit(slot)))
-    var ld := _leader_def()
-    var ls := Label.new()
-    ls.text = "Leader Skill\n%s" % ld["leader"]
-    ls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    ls.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    ls.add_theme_font_size_override("font_size", 19)
-    ls.add_theme_color_override("font_color", GOLD)
-    body.add_child(ls)
-    _add_button("BACK", _home)
-
-func _choose_squad_unit(slot: int) -> void:
-    _clear()
-    _heading("CHOOSE UNIT", "Assign a unit to squad slot %d" % (slot + 1))
-    for i in range(inventory.size()):
-        var u: Dictionary = inventory[i]
-        var d: Dictionary = unit_defs[int(u["def_id"])]
-        body.add_child(_button("%s, %s • Lv.%d • %d★\nHP %d • ATK %d" % [d["name"], d["title"], u["level"], _unit_rarity(u), _unit_hp(u), _unit_atk(u)], func(index=i, target_slot=slot): _assign_squad(target_slot, index)))
-    _add_button("BACK", _squad_menu)
-
-func _assign_squad(slot: int, inv_index: int) -> void:
-    squad[slot] = inv_index
-    _save()
-    _squad_menu()
-
-func _units_menu() -> void:
-    _clear()
-    _heading("UNITS", "%d owned units • tap one for details" % inventory.size())
-    for i in range(inventory.size()):
-        var u: Dictionary = inventory[i]
-        var d: Dictionary = unit_defs[int(u["def_id"])]
-        var tag := " • SQUAD" if squad.has(i) else ""
-        body.add_child(_button("%s, %s%s\n%s • Lv.%d • %d★ • XP %d/%d" % [d["name"], d["title"], tag, d["element"], u["level"], _unit_rarity(u), u["xp"], _xp_needed(int(u["level"]))], func(index=i): _unit_details(index)))
-    _add_button("BACK", _home)
-
-func _unit_details(index: int) -> void:
-    selected = index
-    var u: Dictionary = inventory[index]
-    var d: Dictionary = unit_defs[int(u["def_id"])]
-    _clear()
-    _heading("%s, %s" % [d["name"], d["title"]], "%s • %d★ • Level %d" % [d["element"], _unit_rarity(u), u["level"]])
-    var info := Label.new()
-    info.text = "HP %d\nATK %d\nHits %d\nBB: %s\n\nLeader Skill: %s\n\nXP %d / %d" % [_unit_hp(u), _unit_atk(u), d["hits"], d["bb_name"], d["leader"], u["xp"], _xp_needed(int(u["level"]))]
-    info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    info.add_theme_font_size_override("font_size", 20)
-    info.add_theme_color_override("font_color", TEXT)
-    body.add_child(info)
-    _add_button("TRAIN • 300 GOLD", func(): _train_unit(index))
-    _add_button("EVOLVE", func(): _evolve_unit(index))
-    _add_button("BACK", _units_menu)
-
-func _train_unit(index: int) -> void:
-    if gold < 300:
-        _notice("Not enough Gold.", func(): _unit_details(index))
-        return
-    gold -= 300
-    _add_unit_xp(index, 120)
-    _save()
-    _unit_details(index)
-
-func _evolve_unit(index: int) -> void:
-    var u: Dictionary = inventory[index]
-    var d: Dictionary = unit_defs[int(u["def_id"])]
-    if int(u["evo"]) >= 2:
-        _notice("This unit has reached the prototype evolution cap.", func(): _unit_details(index))
-        return
-    var mat := _element_material(str(d["element"]))
-    var need := 2 + int(u["evo"])
-    var cost := 1000 + int(u["evo"]) * 750
-    if int(materials.get(mat, 0)) < need or gold < cost:
-        _notice("Evolution requires %d %s Materials and %d Gold." % [need, mat, cost], func(): _unit_details(index))
-        return
-    materials[mat] = int(materials.get(mat, 0)) - need
-    gold -= cost
-    u["evo"] = int(u["evo"]) + 1
-    u["level"] = 1
-    u["xp"] = 0
-    _save()
-    _unit_details(index)
-
-func _summon() -> void:
-    _clear()
-    _heading("SUMMON GATE", "5 Gems • duplicates become separate trainable units")
-    _add_button("SUMMON • 5 GEMS", _do_summon)
-    _add_button("BACK", _home)
-
-func _do_summon() -> void:
-    if gems < 5:
-        _notice("Not enough Gems.", _summon)
-        return
-    gems -= 5
-    var pool: Array = []
-    var four: Array = []
-    for i in range(unit_defs.size()):
-        pool.append(i)
-        if int(unit_defs[i]["rarity"]) == 4:
-            four.append(i)
-    var chosen: int
-    if randf() < 0.30 and not four.is_empty():
-        chosen = int(four[randi() % four.size()])
-    else:
-        chosen = int(pool[randi() % pool.size()])
-    inventory.append(_new_unit(chosen))
-    _save()
-    var d: Dictionary = unit_defs[chosen]
-    _clear()
-    _heading("SUMMON RESULT", "A new unit answers the Gate!")
-    var l := Label.new()
-    l.text = "%s, %s\n%s • %d★\n\nAdded to Unit Inventory." % [d["name"], d["title"], d["element"], d["rarity"]]
-    l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    l.add_theme_font_size_override("font_size", 27)
-    l.add_theme_color_override("font_color", GOLD)
-    body.add_child(l)
-    _add_button("SUMMON AGAIN", _summon)
-    _add_button("UNITS", _units_menu)
-
-func _materials() -> void:
-    _clear()
-    _heading("MATERIALS", "Quest drops used for evolution")
-    for key in materials.keys():
-        var l := Label.new()
-        l.text = "%s Material     x%d" % [key, materials[key]]
-        l.add_theme_font_size_override("font_size", 22)
-        l.add_theme_color_override("font_color", TEXT)
-        body.add_child(l)
-    _add_button("BACK", _home)
+    for i in range(6):
+        squad[i] = clampi(int(squad[i]),0,inventory.size()-1)
+    unlocked_quest = clampi(unlocked_quest,0,quests.size()-1)
 
 func _unit_hp(u: Dictionary) -> int:
     var d: Dictionary = unit_defs[int(u["def_id"])]
-    return int(float(d["base_hp"]) * (1.0 + (int(u["level"]) - 1) * 0.035 + int(u["evo"]) * 0.22))
+    return int(float(d["base_hp"]) * (1.0 + (int(u["level"])-1)*0.035 + int(u["evo"])*0.22))
 
 func _unit_atk(u: Dictionary) -> int:
     var d: Dictionary = unit_defs[int(u["def_id"])]
-    return int(float(d["base_atk"]) * (1.0 + (int(u["level"]) - 1) * 0.032 + int(u["evo"]) * 0.20))
+    return int(float(d["base_atk"]) * (1.0 + (int(u["level"])-1)*0.032 + int(u["evo"])*0.20))
 
 func _unit_rarity(u: Dictionary) -> int:
-    return mini(6, int(unit_defs[int(u["def_id"])]["rarity"]) + int(u["evo"]))
+    return mini(6,int(unit_defs[int(u["def_id"])]["rarity"])+int(u["evo"]))
 
 func _xp_needed(level: int) -> int:
-    return 80 + level * 20
+    return 80 + level*20
 
 func _add_unit_xp(index: int, amount: int) -> void:
     var u: Dictionary = inventory[index]
-    u["xp"] = int(u["xp"]) + amount
+    u["xp"] += amount
     while int(u["level"]) < 40 and int(u["xp"]) >= _xp_needed(int(u["level"])):
-        u["xp"] = int(u["xp"]) - _xp_needed(int(u["level"]))
-        u["level"] = int(u["level"]) + 1
+        u["xp"] -= _xp_needed(int(u["level"]))
+        u["level"] += 1
 
 func _apply_rank_xp() -> void:
-    var need := 100 + rank * 25
+    var need := 100 + rank*25
     while rank_xp >= need:
         rank_xp -= need
         rank += 1
-        need = 100 + rank * 25
+        need = 100 + rank*25
+
+func _element_multiplier(attacker: String, defender: String) -> float:
+    if defender == "Neutral": return 1.0
+    if (attacker=="Fire" and defender=="Earth") or (attacker=="Earth" and defender=="Thunder") or (attacker=="Thunder" and defender=="Water") or (attacker=="Water" and defender=="Fire"): return 1.35
+    if (defender=="Fire" and attacker=="Earth") or (defender=="Earth" and attacker=="Thunder") or (defender=="Thunder" and attacker=="Water") or (defender=="Water" and attacker=="Fire"): return 0.75
+    if (attacker=="Light" and defender=="Dark") or (attacker=="Dark" and defender=="Light"): return 1.35
+    return 1.0
+
+func _element_color(element: String) -> Color:
+    match element:
+        "Fire": return Color("d95145")
+        "Water": return Color("348dd1")
+        "Earth": return Color("4c9b58")
+        "Thunder": return Color("d5ad38")
+        "Light": return Color("d8c97d")
+        "Dark": return Color("8a5aac")
+        _: return Color("52677e")
+
+func _element_symbol(element: String) -> String:
+    match element:
+        "Fire": return "🔥"
+        "Water": return "💧"
+        "Earth": return "🌿"
+        "Thunder": return "⚡"
+        "Light": return "☀"
+        "Dark": return "☾"
+        _: return "◇"
 
 func _element_material(element: String) -> String:
     match element:
@@ -524,147 +689,86 @@ func _element_material(element: String) -> String:
         "Light": return "Lumen"
         _: return "Dusk"
 
-func _leader_def() -> Dictionary:
-    if squad.is_empty() or inventory.is_empty():
-        return unit_defs[0]
-    var index := clampi(int(squad[0]), 0, inventory.size() - 1)
-    var u: Dictionary = inventory[index]
-    return unit_defs[int(u["def_id"])]
-
-func _leader_attack_multiplier(element: String, is_bb: bool) -> float:
-    var d := _leader_def()
-    var m := 1.0
-    var text := str(d["leader"])
-    if text.contains("15% ATK") and element == "Fire": m *= 1.15
-    if text.contains("20% ATK") and element == "Water": m *= 1.20
-    if text.contains("10% HP and ATK") and element == "Fire": m *= 1.10
-    if is_bb and text.contains("18%."): m *= 1.18
-    if is_bb and text.contains("25%."): m *= 1.25
-    return m
-
-func _leader_spark_multiplier() -> float:
-    var text := str(_leader_def()["leader"])
-    if text.contains("30%."):
-        return 1.30
-    if text.contains("20%."):
-        return 1.20
-    return 1.0
-
-func _leader_bb_bonus() -> int:
-    return 1 if str(_leader_def()["leader"]).contains("1 point faster") else 0
-
-func _leader_defense_multiplier(element: String) -> float:
-    var text := str(_leader_def()["leader"])
-    if text.contains("Light/Dark") and (element == "Light" or element == "Dark"):
-        return 0.88
-    return 1.0
-
-func _element_multiplier(attacker: String, defender: String) -> float:
-    if (attacker == "Fire" and defender == "Earth") or (attacker == "Earth" and defender == "Thunder") or (attacker == "Thunder" and defender == "Water") or (attacker == "Water" and defender == "Fire"):
-        return 1.35
-    if (defender == "Fire" and attacker == "Earth") or (defender == "Earth" and attacker == "Thunder") or (defender == "Thunder" and attacker == "Water") or (defender == "Water" and attacker == "Fire"):
-        return 0.75
-    if (attacker == "Light" and defender == "Dark") or (attacker == "Dark" and defender == "Light"):
-        return 1.35
-    return 1.0
-
-func _heading(a: String, b: String) -> void:
+func _heading(a: String,b: String) -> void:
     var h := Label.new()
     h.text = a
     h.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    h.add_theme_font_size_override("font_size", 29)
-    h.add_theme_color_override("font_color", GOLD)
+    h.add_theme_font_size_override("font_size",28)
+    h.add_theme_color_override("font_color",GOLD)
     body.add_child(h)
-    var s := Label.new()
-    s.text = b
-    s.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    s.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    s.add_theme_font_size_override("font_size", 17)
-    s.add_theme_color_override("font_color", MUTED)
-    body.add_child(s)
-
-func _add_button(label: String, callback: Callable) -> void:
-    body.add_child(_button(label, callback))
+    if b != "":
+        var s := Label.new()
+        s.text = b
+        s.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+        s.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+        s.add_theme_font_size_override("font_size",16)
+        s.add_theme_color_override("font_color",MUTED)
+        body.add_child(s)
 
 func _button(label: String, callback: Callable) -> Button:
     var b := Button.new()
     b.text = label
-    b.custom_minimum_size = Vector2(0, 82)
-    b.add_theme_font_size_override("font_size", 20)
-    b.add_theme_color_override("font_color", TEXT)
-    var style := StyleBoxFlat.new()
-    style.bg_color = PANEL_2
-    style.corner_radius_top_left = 14
-    style.corner_radius_top_right = 14
-    style.corner_radius_bottom_left = 14
-    style.corner_radius_bottom_right = 14
-    b.add_theme_stylebox_override("normal", style)
+    b.custom_minimum_size = Vector2(0,76)
+    b.add_theme_font_size_override("font_size",19)
+    b.add_theme_color_override("font_color",TEXT)
+    _tint_button(b,PANEL_2)
     b.pressed.connect(callback)
     return b
 
-func _notice(text: String, back: Callable) -> void:
+func _small_button(label: String, callback: Callable) -> Button:
+    var b := _button(label,callback)
+    b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    b.custom_minimum_size = Vector2(0,62)
+    b.add_theme_font_size_override("font_size",17)
+    return b
+
+func _tint_button(b: Button,color: Color) -> void:
+    var style := StyleBoxFlat.new()
+    style.bg_color = color
+    style.corner_radius_top_left = 13
+    style.corner_radius_top_right = 13
+    style.corner_radius_bottom_left = 13
+    style.corner_radius_bottom_right = 13
+    b.add_theme_stylebox_override("normal",style)
+
+func _add_button(label: String, callback: Callable) -> void:
+    body.add_child(_button(label,callback))
+
+func _notice(text: String,back: Callable) -> void:
     _clear()
-    _heading("NOTICE", text)
-    _add_button("BACK", back)
+    _hero_panel("NOTICE",text,Color("3d3045"))
+    _add_button("BACK",back)
 
 func _clear() -> void:
-    if body == null:
-        return
-    for child in body.get_children():
-        child.queue_free()
+    if body == null: return
+    for child in body.get_children(): child.queue_free()
 
 func _refresh() -> void:
     if status != null:
-        status.text = "Rank %d • XP %d/%d     Gold %d     Gems %d" % [rank, rank_xp, 100 + rank * 25, gold, gems]
+        status.text = "Rank %d   Gold %d   Gems %d" % [rank,gold,gems]
 
 func _save() -> void:
-    var f := FileAccess.open("user://save.json", FileAccess.WRITE)
-    if not f:
-        return
-    var data := {
-        "save_version": SAVE_VERSION,
-        "gems": gems,
-        "gold": gold,
-        "rank": rank,
-        "rank_xp": rank_xp,
-        "selected": selected,
-        "unlocked_quest": unlocked_quest,
-        "cleared_quests": cleared_quests,
-        "materials": materials,
-        "squad": squad,
-        "inventory": inventory
-    }
-    f.store_string(JSON.stringify(data))
+    var f := FileAccess.open("user://save.json",FileAccess.WRITE)
+    if not f: return
+    f.store_string(JSON.stringify({"save_version":SAVE_VERSION,"gems":gems,"gold":gold,"rank":rank,"rank_xp":rank_xp,"selected":selected,"unlocked_quest":unlocked_quest,"cleared_quests":cleared_quests,"materials":materials,"squad":squad,"inventory":inventory}))
 
 func _load_save_safe() -> void:
-    if not FileAccess.file_exists("user://save.json"):
-        return
-    var f := FileAccess.open("user://save.json", FileAccess.READ)
-    if not f:
-        return
+    if not FileAccess.file_exists("user://save.json"): return
+    var f := FileAccess.open("user://save.json",FileAccess.READ)
+    if not f: return
     var data = JSON.parse_string(f.get_as_text())
-    if typeof(data) != TYPE_DICTIONARY:
-        return
-    gems = int(data.get("gems", gems))
-    gold = int(data.get("gold", gold))
-    rank = maxi(1, int(data.get("rank", rank)))
-    rank_xp = maxi(0, int(data.get("rank_xp", 0)))
-    selected = maxi(0, int(data.get("selected", 0)))
-    unlocked_quest = maxi(0, int(data.get("unlocked_quest", 0)))
-
-    var cq = data.get("cleared_quests", [])
-    if typeof(cq) == TYPE_ARRAY:
-        cleared_quests = cq
-
-    var mats = data.get("materials", {})
+    if typeof(data) != TYPE_DICTIONARY: return
+    gems = maxi(0,int(data.get("gems",gems)))
+    gold = maxi(0,int(data.get("gold",gold)))
+    rank = maxi(1,int(data.get("rank",rank)))
+    rank_xp = maxi(0,int(data.get("rank_xp",0)))
+    selected = maxi(0,int(data.get("selected",0)))
+    unlocked_quest = maxi(0,int(data.get("unlocked_quest",0)))
+    if typeof(data.get("cleared_quests",[])) == TYPE_ARRAY: cleared_quests = data.get("cleared_quests",[])
+    var mats = data.get("materials",{})
     if typeof(mats) == TYPE_DICTIONARY:
-        for key in materials.keys():
-            materials[key] = maxi(0, int(mats.get(key, materials[key])))
-
-    var inv = data.get("inventory", null)
-    if typeof(inv) == TYPE_ARRAY and inv.size() >= 6:
-        inventory = inv
-
-    var sq = data.get("squad", null)
-    if typeof(sq) == TYPE_ARRAY and sq.size() == 6:
-        squad = sq
+        for key in materials.keys(): materials[key] = maxi(0,int(mats.get(key,0)))
+    var inv = data.get("inventory",null)
+    if typeof(inv) == TYPE_ARRAY and inv.size() >= 6: inventory = inv
+    var sq = data.get("squad",null)
+    if typeof(sq) == TYPE_ARRAY and sq.size() == 6: squad = sq
