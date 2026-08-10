@@ -57,7 +57,7 @@ func _draw_boot_screen() -> void:
     bar.show_percentage = false
     root.add_child(bar)
     var tip := Label.new()
-    tip.text = "Preparing classic interface and bundled assets..."
+    tip.text = "Preparing preserved Brave Frontier assets..."
     tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     tip.add_theme_font_size_override("font_size",14)
     tip.add_theme_color_override("font_color",Color("8399b6"))
@@ -114,10 +114,11 @@ func _start_classic_presentation(game: Node) -> void:
     add_child(service)
 
 func _start_classic_battle(game: Node) -> void:
-    var battle_script = load("res://scripts/ClassicBattleSceneFixed.gd")
+    var battle_script = load("res://scripts/OriginalQuestBattle.gd")
     if battle_script == null:
         return
     var scene := Control.new()
+    scene.name = "OriginalQuestBattle"
     scene.set_script(battle_script)
     scene.set("game",game)
     scene.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
