@@ -53,6 +53,8 @@ func _boot_game() -> void:
     game.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     add_child(game)
     await get_tree().process_frame
+    _start_first_quest_accuracy(game)
+    await get_tree().process_frame
     _start_ui_enhancer(game)
     _start_battle_scene(game)
     if is_instance_valid(status_label):
@@ -63,6 +65,14 @@ func _start_asset_cache() -> void:
     var cache_script = load("res://scripts/AssetCacheService.gd")
     if cache_script == null: return
     var service := Node.new(); service.set_script(cache_script); add_child(service)
+
+func _start_first_quest_accuracy(game: Node) -> void:
+    var accuracy_script = load("res://scripts/FirstQuestAccuracy.gd")
+    if accuracy_script == null: return
+    var service := Node.new()
+    service.set_script(accuracy_script)
+    service.set("game", game)
+    add_child(service)
 
 func _start_ui_enhancer(game: Node) -> void:
     var ui_script = load("res://scripts/BraveUIEnhancer.gd")
