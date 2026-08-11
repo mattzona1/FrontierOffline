@@ -9,7 +9,10 @@ if len(sys.argv) != 2:
     raise SystemExit("usage: bundle_offline_master_data.py <decompfrontier-client-root>")
 
 root = Path(sys.argv[1])
-assets = root / "src/android/app/src/main/assets/frontier_offline/system"
+# The recovered client overrides Android's normal app/src/main/assets source and
+# maps Gradle assets to <client>/data. Put offline master data in that original
+# asset tree so it is physically packaged into the APK.
+assets = root / "data/frontier_offline/system"
 java_root = root / "src/android/app/src/main/java/sg/gumi/bravefrontier"
 assets.mkdir(parents=True, exist_ok=True)
 java_root.mkdir(parents=True, exist_ok=True)
