@@ -32,10 +32,20 @@ if old not in s:
 p.write_text(s.replace(old, new, 1))
 PY
 
+# Upstream references picojson 1.1.0 in CMake but the header is not actually
+# present in the repository. Supply the matching single-header dependency so
+# CMake can advance to compiling the decompiled client.
+mkdir -p "$ROOT/libs/picojson"
+curl -fL --retry 3 \
+  https://raw.githubusercontent.com/kazuho/picojson/v1.1.0/picojson.h \
+  -o "$ROOT/libs/picojson/picojson.h"
+
 echo '=== BFConfig ==='
 grep -n 'OFFLINE_MODE' "$BFCONFIG" || true
 echo '=== Android arch compatibility ==='
 grep -n 'armv7-a' "$CMAKE" || true
+echo '=== picojson ==='
+ls -lh "$ROOT/libs/picojson/picojson.h"
 
 echo '=== Gradle version ==='
 cd "$ROOT/src/android"
