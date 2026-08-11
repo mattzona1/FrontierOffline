@@ -9,6 +9,7 @@ BFCONFIG="$ROOT/src/android/app/src/main/java/sg/gumi/util/BFConfig.java"
 APP_GRADLE="$ROOT/src/android/app/build.gradle"
 SETTINGS="$ROOT/src/android/settings.gradle"
 CMAKE="$ROOT/CMakeLists.txt"
+SRC_CMAKE="$ROOT/src/CMakeLists.txt"
 CCCOMMON="$ROOT/libs/cocos2d-x/cocos2dx/platform/android/CCCommon.cpp"
 BASESCENE_HPP="$ROOT/src/BaseScene.hpp"
 BASESCENE_CPP="$ROOT/src/BaseScene.cpp"
@@ -37,22 +38,31 @@ s = s[:brace_end] + insert + s[brace_end:]
 p.write_text(s)
 PY
 
-# The recovered game source itself uses C++11 features (constexpr and braced
-# initializers), despite the upstream bootstrap currently forcing C++98.
-# Modernize only the language level; cocos2d-x 2.0.3 remains source-compatible.
-python3 - "$CMAKE" <<'PY'
+# Keep cocos2d-x 2.0.3 on the C++98 dialect it was written for, while compiling
+# only the recovered Brave Frontier game target as C++11 (its recovered source
+# contains constexpr and braced initializers). Also retain the modern armv7-a
+# architecture spelling for any later 32-bit probe.
+python3 - "$CMAKE" "$SRC_CMAKE" <<'PY'
 from pathlib import Path
 import sys
-p = Path(sys.argv[1])
-s = p.read_text()
-s = s.replace('set(CMAKE_CXX_STANDARD 98)', 'set(CMAKE_CXX_STANDARD 11)', 1)
+root = Path(sys.argv[1])
+src = Path(sys.argv[2])
+
+s = root.read_text()
 s = s.replace('set(CMAKE_CXX_STANDARD_REQUIRED 98)', 'set(CMAKE_CXX_STANDARD_REQUIRED ON)', 1)
 old = 'elseif("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "arm")'
 new = 'elseif("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "arm" OR "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "armv7-a")'
 if old not in s:
     raise SystemExit('Expected ARM architecture branch not found in upstream CMakeLists.txt')
 s = s.replace(old, new, 1)
-p.write_text(s)
+root.write_text(s)
+
+s = src.read_text()
+needle = 'target_link_libraries(${TARGET} PRIVATE cocos2d-x picojson)'
+if needle not in s:
+    raise SystemExit('Expected game target link line not found in src/CMakeLists.txt')
+insert = 'set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 11)\nset_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)\n\n'
+src.write_text(s.replace(needle, insert + needle, 1))
 PY
 
 # Upstream references picojson 1.1.0 but does not ship the header. Its CMake
@@ -122,6 +132,7 @@ echo '=== BFConfig / ABI / recovered-source compatibility ==='
 grep -n 'OFFLINE_MODE' "$BFCONFIG" || true
 grep -n -A3 'abiFilters' "$APP_GRADLE" || true
 grep -n 'CMAKE_CXX_STANDARD' "$CMAKE" || true
+grep -n 'CXX_STANDARD 11' "$SRC_CMAKE" || true
 grep -n 'armv7-a' "$CMAKE" || true
 grep -n 'class NodeStatus' "$BASESCENE_HPP" || true
 grep -n 'BaseScene.hpp' "$BASESCENE_CPP" || true
