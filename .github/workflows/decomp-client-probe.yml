@@ -8,6 +8,7 @@ on:
       - 'ci/probe_decomp_client.sh'
       - 'ci/patch_offline_runtime.py'
       - 'ci/patch_offline_store.py'
+      - 'ci/strip_online_components.py'
       - '.github/workflows/decomp-client-probe.yml'
 
 jobs:
@@ -159,6 +160,9 @@ jobs:
             fi
             if [ -f "${GITHUB_WORKSPACE}/ci/patch_offline_store.py" ]; then
               python3 "${GITHUB_WORKSPACE}/ci/patch_offline_store.py" "$dest"
+            fi
+            if [ -f "${GITHUB_WORKSPACE}/ci/strip_online_components.py" ]; then
+              python3 "${GITHUB_WORKSPACE}/ci/strip_online_components.py" "$dest"
             fi
           fi
           exit "$code"
