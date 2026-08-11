@@ -1,0 +1,43 @@
+name: Decomp Client Build Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ decompfrontier-pivot ]
+    paths:
+      - 'ci/probe_decomp_client.sh'
+      - '.github/workflows/decomp-client-probe.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+      - name: Probe offline Android client build
+        id: build
+        continue-on-error: true
+        shell: bash
+        run: |
+          chmod +x ci/probe_decomp_client.sh
+          ci/probe_decomp_client.sh
+      - name: Upload probe log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: decomp-client-build-probe
+          path: decomp-client-build.log
+          if-no-files-found: warn
+      - name: Report probe status
+        if: always()
+        shell: bash
+        run: |
+          if grep -q 'DECOMP_CLIENT_BUILD_OK' decomp-client-build.log 2>/dev/null; then
+            echo 'Real client build succeeded.'
+          else
+            echo 'Real client build is blocked; inspect the uploaded log for the next concrete blocker.'
+            exit 1
+          fi
