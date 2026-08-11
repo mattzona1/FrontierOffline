@@ -15,9 +15,10 @@ sed -i 's/final public static boolean OFFLINE_MODE = false;/final public static 
 sed -i "/id 'com.google.gms.google-services'/d" "$APP_GRADLE"
 sed -i "/classpath 'com.google.gms:google-services:/d" "$SETTINGS"
 
-# The preserved original native library set is 32-bit ARM. Do not ask Gradle
-# to configure emulator/x86 or arm64 variants that the recovered client cannot
-# satisfy. This also matches the ABI we ultimately need for the legacy client.
+# Upstream currently preserves complete native dependency/header trees for
+# arm64-v8a and x86_64. Build only ARM64 so CMake uses the matching recovered
+# libraries instead of configuring legacy ABIs whose dependency trees are not
+# present in the repository. ARM64 also matches current Android hardware.
 python3 - "$APP_GRADLE" <<'PY'
 from pathlib import Path
 import sys
@@ -27,14 +28,14 @@ needle = 'defaultConfig {'
 pos = s.find(needle)
 if pos < 0:
     raise SystemExit('defaultConfig block not found')
-insert = "\n        ndk {\n            abiFilters 'armeabi-v7a'\n        }"
+insert = "\n        ndk {\n            abiFilters 'arm64-v8a'\n        }"
 brace_end = pos + len(needle)
 s = s[:brace_end] + insert + s[brace_end:]
 p.write_text(s)
 PY
 
-# Modern Android CMake reports the 32-bit ARM processor as armv7-a, while the
-# reverse-engineered client bootstrap only recognizes "arm".
+# Retain compatibility with modern CMake's spelling if we later probe the
+# legacy 32-bit ARM target again.
 python3 - "$CMAKE" <<'PY'
 from pathlib import Path
 import sys
@@ -68,6 +69,7 @@ grep -n 'OFFLINE_MODE' "$BFCONFIG" || true
 grep -n -A3 'abiFilters' "$APP_GRADLE" || true
 grep -n 'armv7-a' "$CMAKE" || true
 ls -lh "$ROOT/libs/picojson/picojson.h"
+ls -ld "$ROOT/libs/android/arm64-v8a" || true
 
 cd "$ROOT/src/android"
 chmod +x gradlew
