@@ -34,7 +34,9 @@ jobs:
             dest="${!#}"
             ioapi="$dest/libs/cocos2d-x/cocos2dx/support/zip_support/ioapi.cpp"
             if [ -f "$ioapi" ]; then
-              sed -i 's/fopen64(/fopen(/g; s/ftello64(/ftello(/g; s/fseeko64(/fseeko(/g' "$ioapi"
+              # arm64 Android is LP64, so standard long-based stdio already
+              # carries 64-bit offsets. The legacy *64 aliases are unnecessary.
+              sed -i 's/fopen64(/fopen(/g; s/ftello64(/ftell(/g; s/fseeko64(/fseek(/g' "$ioapi"
               echo "Patched legacy minizip large-file stdio aliases in $ioapi"
             fi
           fi
