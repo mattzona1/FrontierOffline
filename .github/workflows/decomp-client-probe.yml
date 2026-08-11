@@ -6,6 +6,7 @@ on:
     branches: [ decompfrontier-pivot ]
     paths:
       - 'ci/probe_decomp_client.sh'
+      - 'ci/patch_offline_runtime.py'
       - '.github/workflows/decomp-client-probe.yml'
 
 jobs:
@@ -60,9 +61,10 @@ jobs:
             if [ -f "$libs_cmake" ]; then
               cat >> "$libs_cmake" <<'CMAKE'
 
-          # FrontierOffline recovery: the upstream CMake glob stops before the
-          # standard Android JNI renderer bridge. Restore it so render/touch/
-          # pause/resume Java native methods are exported by libgame.so.
+          # FrontierOffline recovery: keep the standard Android JNI bridge
+          # available to cocos internals. Renderer/touch entry points are also
+          # compiled directly into libgame.so by probe_decomp_client.sh so the
+          # linker cannot dead-strip Java name-resolved exports.
           if(ANDROID)
               file(GLOB COCOS_ANDROID_JNI_SOURCES
                   "${COCOS2DX_ROOT}/cocos2dx/platform/android/jni/*.cpp")
@@ -149,6 +151,10 @@ jobs:
           #endif
           CPP
               echo "Added recovered Android client bootstrap in $main_android"
+            fi
+
+            if [ -f "${GITHUB_WORKSPACE}/ci/patch_offline_runtime.py" ]; then
+              python3 "${GITHUB_WORKSPACE}/ci/patch_offline_runtime.py" "$dest"
             fi
           fi
           exit "$code"
