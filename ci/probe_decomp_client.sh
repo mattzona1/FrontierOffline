@@ -9,7 +9,6 @@ BFCONFIG="$ROOT/src/android/app/src/main/java/sg/gumi/util/BFConfig.java"
 APP_GRADLE="$ROOT/src/android/app/build.gradle"
 SETTINGS="$ROOT/src/android/settings.gradle"
 CMAKE="$ROOT/CMakeLists.txt"
-LIBS_CMAKE="$ROOT/libs/CMakeLists.txt"
 CCCOMMON="$ROOT/libs/cocos2d-x/cocos2dx/platform/android/CCCommon.cpp"
 
 sed -i 's/final public static boolean OFFLINE_MODE = false;/final public static boolean OFFLINE_MODE = true;/' "$BFCONFIG"
@@ -49,21 +48,12 @@ if old not in s:
 p.write_text(s.replace(old, new, 1))
 PY
 
-# Upstream references picojson 1.1.0 but does not ship the header and exposes
-# the wrong include root for <picojson/picojson.h>.
+# Upstream references picojson 1.1.0 but does not ship the header. Its CMake
+# already exposes libs/picojson as the include directory and Pch.hpp includes
+# <picojson.h>, so place the missing header exactly there and leave the
+# upstream include root unchanged.
 mkdir -p "$ROOT/libs/picojson"
 curl -fL --retry 3 https://raw.githubusercontent.com/kazuho/picojson/v1.1.0/picojson.h -o "$ROOT/libs/picojson/picojson.h"
-python3 - "$LIBS_CMAKE" <<'PY'
-from pathlib import Path
-import sys
-p = Path(sys.argv[1])
-s = p.read_text()
-old = 'target_include_directories(picojson INTERFACE ${CMAKE_CURRENT_LIST_DIR}/picojson)'
-new = 'target_include_directories(picojson INTERFACE ${CMAKE_CURRENT_LIST_DIR})'
-if old not in s:
-    raise SystemExit('Expected picojson include path not found in upstream libs/CMakeLists.txt')
-p.write_text(s.replace(old, new, 1))
-PY
 
 # cocos2d-x 2.0.3 predates modern -Wformat-security defaults. The message is
 # data, not a printf format string, so pass it through an explicit "%s".
