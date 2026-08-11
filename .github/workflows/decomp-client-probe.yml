@@ -11,6 +11,7 @@ on:
       - 'ci/strip_online_components.py'
       - 'ci/bundle_offline_master_data.py'
       - 'ci/disable_external_navigation.py'
+      - 'ci/harden_offline_java.py'
       - '.github/workflows/decomp-client-probe.yml'
 
 jobs:
@@ -139,6 +140,7 @@ jobs:
               patch_offline_store.py \
               strip_online_components.py \
               disable_external_navigation.py \
+              harden_offline_java.py \
               bundle_offline_master_data.py; do
               if [ -f "${GITHUB_WORKSPACE}/ci/${patch}" ]; then
                 python3 "${GITHUB_WORKSPACE}/ci/${patch}" "$dest"
