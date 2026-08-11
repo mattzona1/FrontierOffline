@@ -221,3 +221,15 @@ print(" - Google Play Games activity helper disabled")
 print(" - BraveFrontier online SDK/JNI startup path bypassed")
 print(" - offline lifecycle callbacks hardened")
 print(" - INTERNET/network/phone-state permissions marked for removal")
+
+# These helpers extend the same direct-offline architecture. They are invoked
+# here so every build that applies patch_offline_runtime.py automatically gets
+# the unified local account state and the APK-only legacy download resolver.
+import os
+import subprocess
+workspace = Path(os.environ.get("GITHUB_WORKSPACE", Path(__file__).resolve().parents[1]))
+for helper in ("add_offline_player_state.py", "patch_offline_downloads.py"):
+    helper_path = workspace / "ci" / helper
+    if not helper_path.exists():
+        raise SystemExit(f"required offline helper missing: {helper_path}")
+    subprocess.check_call([sys.executable, str(helper_path), str(root)])
