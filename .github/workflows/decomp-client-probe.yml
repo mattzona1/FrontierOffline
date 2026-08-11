@@ -9,6 +9,7 @@ on:
       - 'ci/patch_offline_runtime.py'
       - 'ci/patch_offline_store.py'
       - 'ci/strip_online_components.py'
+      - 'ci/bundle_offline_master_data.py'
       - '.github/workflows/decomp-client-probe.yml'
 
 jobs:
@@ -164,6 +165,9 @@ jobs:
             if [ -f "${GITHUB_WORKSPACE}/ci/strip_online_components.py" ]; then
               python3 "${GITHUB_WORKSPACE}/ci/strip_online_components.py" "$dest"
             fi
+            if [ -f "${GITHUB_WORKSPACE}/ci/bundle_offline_master_data.py" ]; then
+              python3 "${GITHUB_WORKSPACE}/ci/bundle_offline_master_data.py" "$dest"
+            fi
           fi
           exit "$code"
           EOF
@@ -203,6 +207,21 @@ jobs:
             fi
           fi
 
+          # Static former-server data must be physically packaged in the APK.
+          unzip -l "$APK" | tee apk-asset-list.txt >/dev/null
+          for required in \
+            assets/frontier_offline/master_data_manifest.json \
+            assets/frontier_offline/system/defines.json \
+            assets/frontier_offline/system/features.json \
+            assets/frontier_offline/system/gacha_info.json \
+            assets/frontier_offline/system/gacha.json \
+            assets/frontier_offline/system/gacha_effects.json; do
+            if ! grep -Fq "$required" apk-asset-list.txt; then
+              echo "ERROR: offline master-data asset missing from APK: $required" | tee -a offline-safety-report.txt
+              exit 1
+            fi
+          done
+          echo 'OFFLINE_MASTER_DATA_OK' | tee -a offline-safety-report.txt
           echo 'HARD_OFFLINE_GATE_OK' | tee -a offline-safety-report.txt
 
       - name: Upload probe log
@@ -213,6 +232,7 @@ jobs:
           path: |
             decomp-client-build.log
             offline-safety-report.txt
+            apk-asset-list.txt
           if-no-files-found: warn
 
       - name: Upload hard-offline real client APK
@@ -227,8 +247,8 @@ jobs:
         if: always()
         shell: bash
         run: |
-          if grep -q 'DECOMP_CLIENT_BUILD_OK' decomp-client-build.log 2>/dev/null && grep -q 'HARD_OFFLINE_GATE_OK' offline-safety-report.txt 2>/dev/null; then
-            echo 'Real client build succeeded and passed the hard-offline gate.'
+          if grep -q 'DECOMP_CLIENT_BUILD_OK' decomp-client-build.log 2>/dev/null && grep -q 'HARD_OFFLINE_GATE_OK' offline-safety-report.txt 2>/dev/null && grep -q 'OFFLINE_MASTER_DATA_OK' offline-safety-report.txt 2>/dev/null; then
+            echo 'Real client build succeeded, contains offline master data, and passed the hard-offline gate.'
           else
             echo 'Real client build or hard-offline gate is blocked; inspect the uploaded diagnostics.'
             exit 1
