@@ -9,6 +9,7 @@ BFCONFIG="$ROOT/src/android/app/src/main/java/sg/gumi/util/BFConfig.java"
 APP_GRADLE="$ROOT/src/android/app/build.gradle"
 SETTINGS="$ROOT/src/android/settings.gradle"
 CMAKE="$ROOT/CMakeLists.txt"
+LIBS_CMAKE="$ROOT/libs/CMakeLists.txt"
 
 sed -i 's/final public static boolean OFFLINE_MODE = false;/final public static boolean OFFLINE_MODE = true;/' "$BFCONFIG"
 
@@ -32,13 +33,25 @@ if old not in s:
 p.write_text(s.replace(old, new, 1))
 PY
 
-# Upstream references picojson 1.1.0 in CMake but the header is not actually
-# present in the repository. Supply the matching single-header dependency so
-# CMake can advance to compiling the decompiled client.
+# Upstream references picojson 1.1.0 but does not ship the header. It also
+# exposes libs/picojson as the include root while the client includes
+# <picojson/picojson.h>, which makes the compiler look one directory too deep.
+# Supply the matching header and expose libs/ as the include root.
 mkdir -p "$ROOT/libs/picojson"
 curl -fL --retry 3 \
   https://raw.githubusercontent.com/kazuho/picojson/v1.1.0/picojson.h \
   -o "$ROOT/libs/picojson/picojson.h"
+python3 - "$LIBS_CMAKE" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+s = p.read_text()
+old = 'target_include_directories(picojson INTERFACE ${CMAKE_CURRENT_LIST_DIR}/picojson)'
+new = 'target_include_directories(picojson INTERFACE ${CMAKE_CURRENT_LIST_DIR})'
+if old not in s:
+    raise SystemExit('Expected picojson include path not found in upstream libs/CMakeLists.txt')
+p.write_text(s.replace(old, new, 1))
+PY
 
 echo '=== BFConfig ==='
 grep -n 'OFFLINE_MODE' "$BFCONFIG" || true
@@ -46,6 +59,7 @@ echo '=== Android arch compatibility ==='
 grep -n 'armv7-a' "$CMAKE" || true
 echo '=== picojson ==='
 ls -lh "$ROOT/libs/picojson/picojson.h"
+grep -n 'target_include_directories(picojson' "$LIBS_CMAKE" || true
 
 echo '=== Gradle version ==='
 cd "$ROOT/src/android"
