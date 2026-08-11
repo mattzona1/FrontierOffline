@@ -55,6 +55,101 @@ jobs:
           CPP
               echo "Restored ScrlLayer::visit() in $scrl"
             fi
+
+            libs_cmake="$dest/libs/CMakeLists.txt"
+            if [ -f "$libs_cmake" ]; then
+              cat >> "$libs_cmake" <<'CMAKE'
+
+          # FrontierOffline recovery: the upstream CMake glob stops before the
+          # standard Android JNI renderer bridge. Restore it so render/touch/
+          # pause/resume Java native methods are exported by libgame.so.
+          if(ANDROID)
+              file(GLOB COCOS_ANDROID_JNI_SOURCES
+                  "${COCOS2DX_ROOT}/cocos2dx/platform/android/jni/*.cpp")
+              target_sources(cocos2d-x PRIVATE ${COCOS_ANDROID_JNI_SOURCES})
+          endif()
+          CMAKE
+              echo "Restored cocos Android JNI bridge sources in $libs_cmake"
+            fi
+
+            main_android="$dest/src/Main_Android.cpp"
+            if [ -f "$main_android" ]; then
+              cat >> "$main_android" <<'CPP'
+
+          #ifdef __ANDROID__
+          // The WIP decompilation does not yet contain the original AppDelegate
+          // or Cocos2dxRenderer_nativeInit entry point. This small recovery
+          // bootstrap gives the original Android activity a real cocos surface
+          // while higher-level Brave Frontier scenes are restored incrementally.
+          class FrontierOfflineApplication : public cocos2d::CCApplication
+          {
+          public:
+              virtual bool applicationDidFinishLaunching()
+              {
+                  cocos2d::CCDirector* director = cocos2d::CCDirector::sharedDirector();
+                  cocos2d::CCEGLView* view = cocos2d::CCEGLView::sharedOpenGLView();
+                  director->setOpenGLView(view);
+                  view->setDesignResolutionSize(480.0f, 800.0f, cocos2d::kResolutionShowAll);
+                  director->setDisplayStats(false);
+                  director->setAnimationInterval(1.0 / 60.0);
+
+                  cocos2d::CCScene* scene = cocos2d::CCScene::create();
+                  cocos2d::CCLayerColor* background = cocos2d::CCLayerColor::create(cocos2d::ccc4(20, 14, 28, 255));
+                  scene->addChild(background);
+
+                  cocos2d::CCSize size = director->getWinSize();
+                  cocos2d::CCLabelTTF* title = cocos2d::CCLabelTTF::create("BRAVE FRONTIER", "Arial", 31.0f);
+                  title->setPosition(cocos2d::ccp(size.width * 0.5f, size.height * 0.55f));
+                  scene->addChild(title);
+
+                  cocos2d::CCLabelTTF* status = cocos2d::CCLabelTTF::create("OFFLINE RECOVERY CLIENT", "Arial", 16.0f);
+                  status->setPosition(cocos2d::ccp(size.width * 0.5f, size.height * 0.48f));
+                  scene->addChild(status);
+
+                  director->runWithScene(scene);
+                  return true;
+              }
+
+              virtual void applicationDidEnterBackground()
+              {
+                  cocos2d::CCDirector::sharedDirector()->stopAnimation();
+              }
+
+              virtual void applicationWillEnterForeground()
+              {
+                  cocos2d::CCDirector::sharedDirector()->startAnimation();
+              }
+          };
+
+          static FrontierOfflineApplication* g_frontierOfflineApplication = NULL;
+
+          extern "C" JNIEXPORT void JNICALL Java_org_cocos2dx_lib_Cocos2dxRenderer_nativeInit(
+              JNIEnv* env, jobject thiz, jint width, jint height)
+          {
+              cocos2d::CCDirector* director = cocos2d::CCDirector::sharedDirector();
+              if (!director->getOpenGLView())
+              {
+                  cocos2d::CCEGLView* view = cocos2d::CCEGLView::sharedOpenGLView();
+                  view->setFrameSize(width, height);
+                  if (!g_frontierOfflineApplication)
+                  {
+                      g_frontierOfflineApplication = new FrontierOfflineApplication();
+                  }
+                  cocos2d::CCApplication::sharedApplication()->run();
+              }
+              else
+              {
+                  cocos2d::ccDrawInit();
+                  cocos2d::ccGLInvalidateStateCache();
+                  cocos2d::CCShaderCache::sharedShaderCache()->reloadDefaultShaders();
+                  cocos2d::CCTextureCache::reloadAllTextures();
+                  director->setGLDefaultValues();
+              }
+          }
+          #endif
+          CPP
+              echo "Added recovered Android client bootstrap in $main_android"
+            fi
           fi
           exit "$code"
           EOF
