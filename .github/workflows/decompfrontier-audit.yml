@@ -1,0 +1,28 @@
+name: DecompFrontier Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ decompfrontier-pivot ]
+    paths:
+      - 'decompfrontier/**'
+      - 'ci/audit_decompfrontier.sh'
+      - '.github/workflows/decompfrontier-audit.yml'
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit upstream offline stack
+        shell: bash
+        run: |
+          chmod +x ci/audit_decompfrontier.sh
+          ci/audit_decompfrontier.sh | tee decompfrontier-audit.log
+          grep -q 'AUDIT_OK' decompfrontier-audit.log
+      - name: Upload audit log
+        uses: actions/upload-artifact@v4
+        with:
+          name: decompfrontier-audit
+          path: decompfrontier-audit.log
+          if-no-files-found: error
