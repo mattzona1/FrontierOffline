@@ -6,23 +6,48 @@ rm -rf "$ROOT"
 git clone --depth 1 https://github.com/decompfrontier/client.git "$ROOT"
 
 BFCONFIG="$ROOT/src/android/app/src/main/java/sg/gumi/util/BFConfig.java"
+BRAVEFRONTIER="$ROOT/src/android/app/src/main/java/sg/gumi/bravefrontier/BraveFrontier.java"
 APP_GRADLE="$ROOT/src/android/app/build.gradle"
 SETTINGS="$ROOT/src/android/settings.gradle"
 CMAKE="$ROOT/CMakeLists.txt"
 SRC_CMAKE="$ROOT/src/CMakeLists.txt"
+LIBS_CMAKE="$ROOT/libs/CMakeLists.txt"
 CCCOMMON="$ROOT/libs/cocos2d-x/cocos2dx/platform/android/CCCommon.cpp"
 BASESCENE_HPP="$ROOT/src/BaseScene.hpp"
 BASESCENE_CPP="$ROOT/src/BaseScene.cpp"
 GAMESPRITE_HPP="$ROOT/src/GameSprite.hpp"
+COMMONUTILS_CPP="$ROOT/src/CommonUtils.cpp"
+SCRLLAYER_CPP="$ROOT/src/ScrlLayer.cpp"
+NATIVE_CALLBACK_CPP="$ROOT/src/NativeCallbackHandler.cpp"
 
 sed -i 's/final public static boolean OFFLINE_MODE = false;/final public static boolean OFFLINE_MODE = true;/' "$BFCONFIG"
 sed -i "/id 'com.google.gms.google-services'/d" "$APP_GRADLE"
 sed -i "/classpath 'com.google.gms:google-services:/d" "$SETTINGS"
 
+# True offline architecture: do not launch decompfrontier's embedded HTTP
+# server. Local game data/state will be resolved in-process instead.
+python3 - "$BRAVEFRONTIER" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+s = p.read_text()
+old = '''        if (OFFLINE_MODE) { // __DECOMP__
+            it.arves100.gimuserver.OfflineMod.startOfflineServer();
+        }
+'''
+new = '''        if (OFFLINE_MODE) { // FrontierOffline: direct/in-process offline mode
+            Log.i("FrontierOffline", "Offline mode active; embedded HTTP server disabled");
+        }
+'''
+if old not in s:
+    raise SystemExit('Expected upstream OfflineMod startup block not found')
+p.write_text(s.replace(old, new, 1))
+PY
+
 # Upstream currently preserves complete native dependency/header trees for
 # arm64-v8a and x86_64. Build only ARM64 so CMake uses the matching recovered
 # libraries instead of configuring legacy ABIs whose dependency trees are not
-# present in the repository. ARM64 also matches current Android hardware.
+# present in the repository.
 python3 - "$APP_GRADLE" <<'PY'
 from pathlib import Path
 import sys
@@ -38,10 +63,8 @@ s = s[:brace_end] + insert + s[brace_end:]
 p.write_text(s)
 PY
 
-# Keep cocos2d-x 2.0.3 on the C++98 dialect it was written for, while compiling
-# only the recovered Brave Frontier game target as C++11 (its recovered source
-# contains constexpr and braced initializers). Also retain the modern armv7-a
-# architecture spelling for any later 32-bit probe.
+# Keep cocos2d-x 2.0.3 on C++98 while compiling only the recovered Brave
+# Frontier game target as C++11. Retain modern armv7-a spelling for later.
 python3 - "$CMAKE" "$SRC_CMAKE" <<'PY'
 from pathlib import Path
 import sys
@@ -65,16 +88,40 @@ insert = 'set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 11)\nset_property(
 src.write_text(s.replace(needle, insert + needle, 1))
 PY
 
-# Upstream references picojson 1.1.0 but does not ship the header. Its CMake
-# already exposes libs/picojson as the include directory and Pch.hpp includes
-# <picojson.h>, so place the missing header exactly there.
+# The recovered cocos CMake only globs one directory level. Restore the nested
+# source groups required by cocos2d-x 2.0.3: Kazmath, array/data helpers, and
+# zip/minizip support.
+python3 - "$LIBS_CMAKE" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+s = p.read_text()
+needle = 'add_library(cocos2d-x ${COCOS_LIB_TYPE} ${COCOS_SOURCES})'
+if needle not in s:
+    raise SystemExit('Expected cocos2d-x add_library line not found')
+extra = '''file(GLOB_RECURSE COCOS_KAZMATH_SOURCES
+    "${COCOS2DX_ROOT}/cocos2dx/kazmath/src/*.c")
+file(GLOB COCOS_DATA_SUPPORT_SOURCES
+    "${COCOS2DX_ROOT}/cocos2dx/support/data_support/*.cpp"
+    "${COCOS2DX_ROOT}/cocos2dx/support/data_support/*.c")
+file(GLOB COCOS_ZIP_SUPPORT_SOURCES
+    "${COCOS2DX_ROOT}/cocos2dx/support/zip_support/*.cpp"
+    "${COCOS2DX_ROOT}/cocos2dx/support/zip_support/*.c")
+list(APPEND COCOS_SOURCES
+    ${COCOS_KAZMATH_SOURCES}
+    ${COCOS_DATA_SUPPORT_SOURCES}
+    ${COCOS_ZIP_SUPPORT_SOURCES})
+
+'''
+p.write_text(s.replace(needle, extra + needle, 1))
+PY
+
+# Upstream references picojson 1.1.0 but does not ship the header.
 mkdir -p "$ROOT/libs/picojson"
 curl -fL --retry 3 https://raw.githubusercontent.com/kazuho/picojson/v1.1.0/picojson.h -o "$ROOT/libs/picojson/picojson.h"
 
-# Linux/Android builds are case-sensitive. The recovered BaseScene source uses
-# the original Windows-style lowercase filename even though the header is
-# BaseScene.hpp. BaseScene also needs forward declarations before its pointer
-# parameters are parsed; GameLayer.hpp includes NodeStatus only afterwards.
+# Linux/Android builds are case-sensitive. Restore BaseScene's actual filename
+# and forward declarations needed before pointer parameters are parsed.
 python3 - "$BASESCENE_CPP" "$BASESCENE_HPP" <<'PY'
 from pathlib import Path
 import sys
@@ -93,9 +140,7 @@ insert = '\nclass GameSprite;\nclass NodeStatus;\n'
 hpp.write_text(s.replace(needle, needle + insert, 1))
 PY
 
-# GameSprite.hpp contains inline definitions for four accessors that are also
-# present in GameSprite.cpp. Keep the recovered out-of-line implementations and
-# turn the header copies back into declarations to avoid ODR redefinitions.
+# GameSprite.hpp duplicates four definitions that also exist in GameSprite.cpp.
 python3 - "$GAMESPRITE_HPP" <<'PY'
 from pathlib import Path
 import sys
@@ -114,8 +159,95 @@ for old, new in repls.items():
 p.write_text(s)
 PY
 
-# cocos2d-x 2.0.3 predates modern -Wformat-security defaults. The message is
-# data, not a printf format string, so pass it through an explicit "%s".
+# Several useful CommonUtils implementations are preserved upstream inside a
+# disabled decompilation block. Restore only the three currently required by
+# live recovered code, using cocos runtime dimensions directly.
+cat >> "$COMMONUTILS_CPP" <<'CPP'
+
+// FrontierOffline recovery shims: minimal live implementations required by
+// GameLayer/GameSprite while the larger decompilation block remains disabled.
+int CommonUtils::getScreenWidth()
+{
+    cocos2d::CCDirector* director = cocos2d::CCDirector::sharedDirector();
+    return director ? static_cast<int>(director->getWinSize().width) : 480;
+}
+
+int CommonUtils::getScreenHeight()
+{
+    cocos2d::CCDirector* director = cocos2d::CCDirector::sharedDirector();
+    return director ? static_cast<int>(director->getWinSize().height) : 800;
+}
+
+cocos2d::CCPoint CommonUtils::convertPosition(float width, float height)
+{
+    cocos2d::CCDirector* director = cocos2d::CCDirector::sharedDirector();
+    const float screenHeight = director ? director->getWinSize().height : 800.0f;
+    return cocos2d::CCPoint(width, screenHeight - height);
+}
+CPP
+
+# ScrlLayer.cpp was recovered as an empty translation unit even though the
+# initial GameLayer path uses its constructor and two positioning methods.
+cat >> "$SCRLLAYER_CPP" <<'CPP'
+
+ScrlLayer::ScrlLayer()
+{
+    m_scrollPosition = cocos2d::CCPoint(0.0f, 0.0f);
+    m_scrollVertical = cocos2d::CCPoint(0.0f, 0.0f);
+    m_currentSize = cocos2d::CCPoint(0.0f, 0.0f);
+    m_maxPosition = cocos2d::CCPoint(0.0f, 0.0f);
+    m_touchScrollPosition = cocos2d::CCPoint(0.0f, 0.0f);
+    m_isMoveDest = false;
+    m_isVerticalScrollEnable = false;
+    m_isHorizontalScrollEnable = false;
+    m_reverseScroll = false;
+    m_isTouchInScrollArea = false;
+    m_lockDrug = false;
+    m_lockScroll = false;
+    m_isActive = true;
+    m_offsetX = 0.0f;
+    m_offsetY = 0.0f;
+    m_isSlideEnable = false;
+    m_slideEnable = false;
+    m_touchScrollType = SCROLL_TOUCH_NONE;
+    m_pScrollBar = NULL;
+}
+
+void ScrlLayer::setOffset(float x, float y)
+{
+    m_offsetX = x;
+    m_offsetY = y;
+}
+
+void ScrlLayer::setLayerPosition(cocos2d::CCPoint point)
+{
+    cocos2d::CCLayer::setPosition(point);
+    m_scrollPosition = point;
+}
+CPP
+
+# Restore the one missing callback body and make sharedHandler safe to call.
+python3 - "$NATIVE_CALLBACK_CPP" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+s = p.read_text()
+needle = 'NativeCallbackHandler* NativeCallbackHandler::sharedHandler()\n{\n    return NULL;\n}'
+if needle not in s:
+    raise SystemExit('Expected NativeCallbackHandler::sharedHandler body not found')
+replacement = '''void NativeCallbackHandler::playPhonePurchaseFailCallBack()
+{
+}
+
+NativeCallbackHandler* NativeCallbackHandler::sharedHandler()
+{
+    static NativeCallbackHandler handler;
+    return &handler;
+}'''
+p.write_text(s.replace(needle, replacement, 1))
+PY
+
+# cocos2d-x 2.0.3 predates modern -Wformat-security defaults.
 python3 - "$CCCOMMON" <<'PY'
 from pathlib import Path
 import sys
@@ -128,12 +260,12 @@ if old not in s:
 p.write_text(s.replace(old, new, 1))
 PY
 
-echo '=== BFConfig / ABI / recovered-source compatibility ==='
+echo '=== BFConfig / offline / recovered-source compatibility ==='
 grep -n 'OFFLINE_MODE' "$BFCONFIG" || true
+grep -n 'embedded HTTP server disabled' "$BRAVEFRONTIER" || true
 grep -n -A3 'abiFilters' "$APP_GRADLE" || true
-grep -n 'CMAKE_CXX_STANDARD' "$CMAKE" || true
 grep -n 'CXX_STANDARD 11' "$SRC_CMAKE" || true
-grep -n 'armv7-a' "$CMAKE" || true
+grep -n 'COCOS_KAZMATH_SOURCES' "$LIBS_CMAKE" || true
 grep -n 'class NodeStatus' "$BASESCENE_HPP" || true
 grep -n 'BaseScene.hpp' "$BASESCENE_CPP" || true
 grep -n '__android_log_print' "$CCCOMMON" || true
