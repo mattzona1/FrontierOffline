@@ -89,7 +89,7 @@ jobs:
                   cocos2d::CCDirector* director = cocos2d::CCDirector::sharedDirector();
                   cocos2d::CCEGLView* view = cocos2d::CCEGLView::sharedOpenGLView();
                   director->setOpenGLView(view);
-                  view->setDesignResolutionSize(480.0f, 800.0f, cocos2d::kResolutionShowAll);
+                  view->setDesignResolutionSize(480.0f, 800.0f, kResolutionShowAll);
                   director->setDisplayStats(false);
                   director->setAnimationInterval(1.0 / 60.0);
 
@@ -99,11 +99,11 @@ jobs:
 
                   cocos2d::CCSize size = director->getWinSize();
                   cocos2d::CCLabelTTF* title = cocos2d::CCLabelTTF::create("BRAVE FRONTIER", "Arial", 31.0f);
-                  title->setPosition(cocos2d::ccp(size.width * 0.5f, size.height * 0.55f));
+                  title->setPosition(cocos2d::CCPoint(size.width * 0.5f, size.height * 0.55f));
                   scene->addChild(title);
 
                   cocos2d::CCLabelTTF* status = cocos2d::CCLabelTTF::create("OFFLINE RECOVERY CLIENT", "Arial", 16.0f);
-                  status->setPosition(cocos2d::ccp(size.width * 0.5f, size.height * 0.48f));
+                  status->setPosition(cocos2d::CCPoint(size.width * 0.5f, size.height * 0.48f));
                   scene->addChild(status);
 
                   director->runWithScene(scene);
