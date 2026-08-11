@@ -12,15 +12,29 @@ CMAKE="$ROOT/CMakeLists.txt"
 LIBS_CMAKE="$ROOT/libs/CMakeLists.txt"
 
 sed -i 's/final public static boolean OFFLINE_MODE = false;/final public static boolean OFFLINE_MODE = true;/' "$BFCONFIG"
-
-# The offline build must not require a Firebase project merely to configure Gradle.
-# Keep runtime classes for this first probe; only remove the google-services Gradle plugin.
 sed -i "/id 'com.google.gms.google-services'/d" "$APP_GRADLE"
 sed -i "/classpath 'com.google.gms:google-services:/d" "$SETTINGS"
 
+# The preserved original native library set is 32-bit ARM. Do not ask Gradle
+# to configure emulator/x86 or arm64 variants that the recovered client cannot
+# satisfy. This also matches the ABI we ultimately need for the legacy client.
+python3 - "$APP_GRADLE" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+s = p.read_text()
+needle = 'defaultConfig {'
+pos = s.find(needle)
+if pos < 0:
+    raise SystemExit('defaultConfig block not found')
+insert = "\n        ndk {\n            abiFilters 'armeabi-v7a'\n        }"
+brace_end = pos + len(needle)
+s = s[:brace_end] + insert + s[brace_end:]
+p.write_text(s)
+PY
+
 # Modern Android CMake reports the 32-bit ARM processor as armv7-a, while the
-# reverse-engineered client bootstrap only recognizes "arm". Both map to the
-# same preserved armeabi-v7a library set.
+# reverse-engineered client bootstrap only recognizes "arm".
 python3 - "$CMAKE" <<'PY'
 from pathlib import Path
 import sys
@@ -33,14 +47,10 @@ if old not in s:
 p.write_text(s.replace(old, new, 1))
 PY
 
-# Upstream references picojson 1.1.0 but does not ship the header. It also
-# exposes libs/picojson as the include root while the client includes
-# <picojson/picojson.h>, which makes the compiler look one directory too deep.
-# Supply the matching header and expose libs/ as the include root.
+# Upstream references picojson 1.1.0 but does not ship the header and exposes
+# the wrong include root for <picojson/picojson.h>.
 mkdir -p "$ROOT/libs/picojson"
-curl -fL --retry 3 \
-  https://raw.githubusercontent.com/kazuho/picojson/v1.1.0/picojson.h \
-  -o "$ROOT/libs/picojson/picojson.h"
+curl -fL --retry 3 https://raw.githubusercontent.com/kazuho/picojson/v1.1.0/picojson.h -o "$ROOT/libs/picojson/picojson.h"
 python3 - "$LIBS_CMAKE" <<'PY'
 from pathlib import Path
 import sys
@@ -53,15 +63,12 @@ if old not in s:
 p.write_text(s.replace(old, new, 1))
 PY
 
-echo '=== BFConfig ==='
+echo '=== BFConfig / ABI / dependencies ==='
 grep -n 'OFFLINE_MODE' "$BFCONFIG" || true
-echo '=== Android arch compatibility ==='
+grep -n -A3 'abiFilters' "$APP_GRADLE" || true
 grep -n 'armv7-a' "$CMAKE" || true
-echo '=== picojson ==='
 ls -lh "$ROOT/libs/picojson/picojson.h"
-grep -n 'target_include_directories(picojson' "$LIBS_CMAKE" || true
 
-echo '=== Gradle version ==='
 cd "$ROOT/src/android"
 chmod +x gradlew
 ./gradlew --version
