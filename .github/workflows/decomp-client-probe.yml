@@ -10,6 +10,7 @@ on:
       - 'ci/patch_offline_store.py'
       - 'ci/strip_online_components.py'
       - 'ci/bundle_offline_master_data.py'
+      - 'ci/disable_external_navigation.py'
       - '.github/workflows/decomp-client-probe.yml'
 
 jobs:
@@ -26,9 +27,6 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          # The probe clones the recovered client internally. Wrap that single
-          # clone so deterministic source-recovery patches are applied before
-          # CMake ever sees the upstream work-in-progress tree.
           mkdir -p /tmp/frontier-bin
           cat > /tmp/frontier-bin/git <<'EOF'
           #!/usr/bin/env bash
@@ -39,42 +37,30 @@ jobs:
 
             ioapi="$dest/libs/cocos2d-x/cocos2dx/support/zip_support/ioapi.cpp"
             if [ -f "$ioapi" ]; then
-              # arm64 Android is LP64, so standard long-based stdio already
-              # carries 64-bit offsets. The legacy *64 aliases are unnecessary.
               sed -i 's/fopen64(/fopen(/g; s/ftello64(/ftell(/g; s/fseeko64(/fseek(/g' "$ioapi"
-              echo "Patched legacy minizip large-file stdio aliases in $ioapi"
             fi
 
             scrl="$dest/src/ScrlLayer.cpp"
             if [ -f "$scrl" ]; then
               cat >> "$scrl" <<'CPP'
 
-          // FrontierOffline recovery: upstream declares visit() but its
-          // recovered translation unit contains no body. Calling the base
-          // implementation preserves cocos2d-x traversal semantics.
           void ScrlLayer::visit()
           {
               cocos2d::CCLayer::visit();
           }
           CPP
-              echo "Restored ScrlLayer::visit() in $scrl"
             fi
 
             libs_cmake="$dest/libs/CMakeLists.txt"
             if [ -f "$libs_cmake" ]; then
               cat >> "$libs_cmake" <<'CMAKE'
 
-          # FrontierOffline recovery: keep the standard Android JNI bridge
-          # available to cocos internals. Renderer/touch entry points are also
-          # compiled directly into libgame.so by probe_decomp_client.sh so the
-          # linker cannot dead-strip Java name-resolved exports.
           if(ANDROID)
               file(GLOB COCOS_ANDROID_JNI_SOURCES
                   "${COCOS2DX_ROOT}/cocos2dx/platform/android/jni/*.cpp")
               target_sources(cocos2d-x PRIVATE ${COCOS_ANDROID_JNI_SOURCES})
           endif()
           CMAKE
-              echo "Restored cocos Android JNI bridge sources in $libs_cmake"
             fi
 
             main_android="$dest/src/Main_Android.cpp"
@@ -82,10 +68,6 @@ jobs:
               cat >> "$main_android" <<'CPP'
 
           #ifdef __ANDROID__
-          // The WIP decompilation does not yet contain the original AppDelegate
-          // or Cocos2dxRenderer_nativeInit entry point. This small recovery
-          // bootstrap gives the original Android activity a real cocos surface
-          // while higher-level Brave Frontier scenes are restored incrementally.
           class FrontierOfflineApplication : public cocos2d::CCApplication
           {
           public:
@@ -101,16 +83,13 @@ jobs:
                   cocos2d::CCScene* scene = cocos2d::CCScene::create();
                   cocos2d::CCLayerColor* background = cocos2d::CCLayerColor::create(cocos2d::ccc4(20, 14, 28, 255));
                   scene->addChild(background);
-
                   cocos2d::CCSize size = director->getWinSize();
                   cocos2d::CCLabelTTF* title = cocos2d::CCLabelTTF::create("BRAVE FRONTIER", "Arial", 31.0f);
                   title->setPosition(cocos2d::CCPoint(size.width * 0.5f, size.height * 0.55f));
                   scene->addChild(title);
-
                   cocos2d::CCLabelTTF* status = cocos2d::CCLabelTTF::create("OFFLINE RECOVERY CLIENT", "Arial", 16.0f);
                   status->setPosition(cocos2d::CCPoint(size.width * 0.5f, size.height * 0.48f));
                   scene->addChild(status);
-
                   director->runWithScene(scene);
                   return true;
               }
@@ -153,21 +132,18 @@ jobs:
           }
           #endif
           CPP
-              echo "Added recovered Android client bootstrap in $main_android"
             fi
 
-            if [ -f "${GITHUB_WORKSPACE}/ci/patch_offline_runtime.py" ]; then
-              python3 "${GITHUB_WORKSPACE}/ci/patch_offline_runtime.py" "$dest"
-            fi
-            if [ -f "${GITHUB_WORKSPACE}/ci/patch_offline_store.py" ]; then
-              python3 "${GITHUB_WORKSPACE}/ci/patch_offline_store.py" "$dest"
-            fi
-            if [ -f "${GITHUB_WORKSPACE}/ci/strip_online_components.py" ]; then
-              python3 "${GITHUB_WORKSPACE}/ci/strip_online_components.py" "$dest"
-            fi
-            if [ -f "${GITHUB_WORKSPACE}/ci/bundle_offline_master_data.py" ]; then
-              python3 "${GITHUB_WORKSPACE}/ci/bundle_offline_master_data.py" "$dest"
-            fi
+            for patch in \
+              patch_offline_runtime.py \
+              patch_offline_store.py \
+              strip_online_components.py \
+              disable_external_navigation.py \
+              bundle_offline_master_data.py; do
+              if [ -f "${GITHUB_WORKSPACE}/ci/${patch}" ]; then
+                python3 "${GITHUB_WORKSPACE}/ci/${patch}" "$dest"
+              fi
+            done
           fi
           exit "$code"
           EOF
@@ -207,7 +183,6 @@ jobs:
             fi
           fi
 
-          # Static former-server data must be physically packaged in the APK.
           unzip -l "$APK" | tee apk-asset-list.txt >/dev/null
           for required in \
             assets/frontier_offline/master_data_manifest.json \
