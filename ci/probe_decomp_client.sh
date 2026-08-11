@@ -10,6 +10,7 @@ APP_GRADLE="$ROOT/src/android/app/build.gradle"
 SETTINGS="$ROOT/src/android/settings.gradle"
 CMAKE="$ROOT/CMakeLists.txt"
 LIBS_CMAKE="$ROOT/libs/CMakeLists.txt"
+CCCOMMON="$ROOT/libs/cocos2d-x/cocos2dx/platform/android/CCCommon.cpp"
 
 sed -i 's/final public static boolean OFFLINE_MODE = false;/final public static boolean OFFLINE_MODE = true;/' "$BFCONFIG"
 sed -i "/id 'com.google.gms.google-services'/d" "$APP_GRADLE"
@@ -64,10 +65,25 @@ if old not in s:
 p.write_text(s.replace(old, new, 1))
 PY
 
+# cocos2d-x 2.0.3 predates modern -Wformat-security defaults. The message is
+# data, not a printf format string, so pass it through an explicit "%s".
+python3 - "$CCCOMMON" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+s = p.read_text()
+old = '__android_log_print(ANDROID_LOG_DEBUG, "cocos2d-x debug info",  buf);'
+new = '__android_log_print(ANDROID_LOG_DEBUG, "cocos2d-x debug info", "%s", buf);'
+if old not in s:
+    raise SystemExit('Expected legacy Android log call not found')
+p.write_text(s.replace(old, new, 1))
+PY
+
 echo '=== BFConfig / ABI / dependencies ==='
 grep -n 'OFFLINE_MODE' "$BFCONFIG" || true
 grep -n -A3 'abiFilters' "$APP_GRADLE" || true
 grep -n 'armv7-a' "$CMAKE" || true
+grep -n '__android_log_print' "$CCCOMMON" || true
 ls -lh "$ROOT/libs/picojson/picojson.h"
 ls -ld "$ROOT/libs/android/arm64-v8a" || true
 
