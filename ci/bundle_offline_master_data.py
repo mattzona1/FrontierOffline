@@ -2,6 +2,8 @@
 from pathlib import Path
 import hashlib
 import json
+import os
+import subprocess
 import sys
 import urllib.request
 
@@ -20,9 +22,8 @@ java_root.mkdir(parents=True, exist_ok=True)
 SERVER_COMMIT = "7cc0ebd3be79ca561874f70224c3ed924224583b"
 BASE = f"https://raw.githubusercontent.com/decompfrontier/server/{SERVER_COMMIT}/deploy/system"
 
-# These are static/master tables, not live server responses. Bundling them is
-# the first step toward making the original client resolve former server-backed
-# content from APK assets and local save state instead of HTTP.
+# Static/master tables only. No server executable, session, account endpoint or
+# runtime HTTP component is included. These become ordinary APK assets.
 FILES = [
     "defines.json",
     "features.json",
@@ -34,6 +35,7 @@ FILES = [
     "gacha.json",
     "gacha_effects.json",
     "resummon_gacha.json",
+    "summon_tickets_v2.json",
     "gift.json",
     "npc.json",
     "login_campaign.json",
@@ -46,6 +48,29 @@ FILES = [
     "help.json",
     "help_sub.json",
     "arena_rank.json",
+    "first_desc.json",
+    "sound.json",
+    "unit_exp_pattern.json",
+    "user_level.json",
+    "extra_passive_skills.json",
+    "town_facility.json",
+    "town_facility_lv.json",
+    "town_location.json",
+    "town_location_lv.json",
+    "trophy.json",
+    "trophy_grade.json",
+    "trophy_group.json",
+    "TEMP_daily_tasks.json",
+    "TEMP_daily_tasks_bonus.json",
+    "TEMP_daily_tasks_prizes.json",
+    "challenge.json",
+    "challenge_grade.json",
+    "challenge_hr.json",
+    "challenge_item.json",
+    "challenge_mis.json",
+    "challenge_mvp.json",
+    "challenge_rank_reward.json",
+    "challenge_reward.json",
 ]
 
 manifest = {
@@ -58,7 +83,7 @@ total = 0
 for name in FILES:
     url = f"{BASE}/{name}"
     req = urllib.request.Request(url, headers={"User-Agent": "FrontierOffline-Build/1.0"})
-    with urllib.request.urlopen(req, timeout=60) as response:
+    with urllib.request.urlopen(req, timeout=90) as response:
         data = response.read()
     # Fail the build if a source stopped being JSON instead of silently baking
     # an HTML error page into the game.
@@ -76,7 +101,7 @@ manifest["total_bytes"] = total
 )
 
 # Java access point for the recovered Android/native client. No sockets, URLs,
-# or server process are involved at runtime; callers ask for an asset by name.
+# or server process are involved at runtime; callers ask AssetManager directly.
 (java_root / "OfflineMasterData.java").write_text(r'''package sg.gumi.bravefrontier;
 
 import android.content.Context;
@@ -86,7 +111,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
 public final class OfflineMasterData {
-    private static final String ROOT = "frontier_offline/system/";
+    private static final String ROOT = "frontier_offline/";
 
     private OfflineMasterData() {
     }
@@ -99,32 +124,53 @@ public final class OfflineMasterData {
         return c;
     }
 
-    public static String readJson(String name) {
-        if (name == null || name.contains("/") || name.contains("\\") || !name.endsWith(".json")) {
+    public static byte[] readBytes(String relativePath) {
+        if (relativePath == null || relativePath.isEmpty()
+                || relativePath.startsWith("/") || relativePath.contains("..")
+                || relativePath.contains("\\")) {
             return null;
         }
         Context c = context();
-        if (c == null) {
-            return null;
-        }
-        try (InputStream in = c.getAssets().open(ROOT + name);
+        if (c == null) return null;
+        try (InputStream in = c.getAssets().open(ROOT + relativePath);
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            byte[] buffer = new byte[8192];
+            byte[] buffer = new byte[16384];
             int count;
             while ((count = in.read(buffer)) > 0) {
                 out.write(buffer, 0, count);
             }
-            return new String(out.toByteArray(), StandardCharsets.UTF_8);
+            return out.toByteArray();
         } catch (IOException ex) {
             return null;
         }
     }
 
-    public static boolean has(String name) {
-        return readJson(name) != null;
+    public static String readText(String relativePath) {
+        byte[] data = readBytes(relativePath);
+        return data == null ? null : new String(data, StandardCharsets.UTF_8);
+    }
+
+    public static String readJson(String name) {
+        if (name == null || name.contains("/") || name.contains("\\") || !name.endsWith(".json")) {
+            return null;
+        }
+        return readText("system/" + name);
+    }
+
+    public static boolean has(String relativePath) {
+        return readBytes(relativePath) != null;
     }
 }
 ''')
+
+# Import only static data from the preserved Mission-and-Units recovery release.
+# The helper verifies its pinned SHA-256 and explicitly excludes executable
+# server/library formats before anything is placed under the Android assets tree.
+workspace = Path(os.environ.get("GITHUB_WORKSPACE", Path(__file__).resolve().parents[1]))
+recovery_helper = workspace / "ci" / "bundle_recovery_release.py"
+if not recovery_helper.exists():
+    raise SystemExit(f"required recovery-data helper missing: {recovery_helper}")
+subprocess.check_call([sys.executable, str(recovery_helper), str(root)])
 
 print(f"Bundled {len(FILES)} offline master-data files ({total:,} bytes total)")
 print("Runtime source: APK assets only; no HTTP/server dependency")
