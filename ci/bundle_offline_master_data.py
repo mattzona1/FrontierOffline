@@ -173,10 +173,14 @@ if not recovery_helper.exists():
 subprocess.check_call([sys.executable, str(recovery_helper), str(root)])
 
 # Finish the direct-offline runtime after all static data classes/assets exist.
-# These helpers create the in-process initialize payload and then replace the
-# temporary Cocos splash with an interactive diagnostic hub that exercises the
-# same local profile and Gem wallet the restored scenes will use.
-for helper_name in ("add_offline_bootstrap.py", "patch_recovery_hub.py"):
+# These helpers create the in-process initialize payload, replace the temporary
+# Cocos splash with an interactive diagnostic hub, and adapt its callbacks to
+# the legacy cocos2d-x 2.0 namespace used by the recovered client.
+for helper_name in (
+    "add_offline_bootstrap.py",
+    "patch_recovery_hub.py",
+    "fix_recovery_hub_callbacks.py",
+):
     helper = workspace / "ci" / helper_name
     if not helper.exists():
         raise SystemExit(f"required serverless helper missing: {helper}")
