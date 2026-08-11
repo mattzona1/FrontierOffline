@@ -29,7 +29,7 @@ s = afapp.read_text()
 s = replace_once(
     s,
     "        super.onCreate();\n\n        try {",
-    "        super.onCreate();\n\n        if (BFConfig.OFFLINE_MODE) {\n"
+    "        super.onCreate();\n\n        if (sg.gumi.util.BFConfig.OFFLINE_MODE) {\n"
     "            appsflyerInitialized = false;\n"
     "            Log.i(\"FrontierOffline\", \"AppsFlyer disabled for offline client\");\n"
     "            return;\n"
@@ -47,7 +47,7 @@ s = replace_once(
     s,
     "        super.onCreate(bundle);\n        mHelper = GameService.createService(this);",
     "        super.onCreate(bundle);\n"
-    "        if (BFConfig.OFFLINE_MODE) {\n"
+    "        if (sg.gumi.util.BFConfig.OFFLINE_MODE) {\n"
     "            mHelper = null;\n"
     "            return;\n"
     "        }\n"
