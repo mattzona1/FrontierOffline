@@ -21,12 +21,28 @@ jobs:
         id: build
         continue-on-error: true
         shell: bash
-        env:
-          # cocos2d-x 2.0.3/minizip references glibc-style *64 stdio names.
-          # Android's current 64-bit ABI already uses 64-bit file offsets, so
-          # map those legacy aliases to the standard Android stdio functions.
-          CXXFLAGS: -Dfopen64=fopen -Dftello64=ftello -Dfseeko64=fseeko
         run: |
+          # The probe clones the recovered client internally. Wrap that single
+          # clone so legacy cocos2d-x/minizip gets a deterministic Android NDK
+          # compatibility patch before CMake ever sees the source.
+          mkdir -p /tmp/frontier-bin
+          cat > /tmp/frontier-bin/git <<'EOF'
+          #!/usr/bin/env bash
+          /usr/bin/git "$@"
+          code=$?
+          if [ "$code" -eq 0 ] && [ "${1:-}" = "clone" ]; then
+            dest="${!#}"
+            ioapi="$dest/libs/cocos2d-x/cocos2dx/support/zip_support/ioapi.cpp"
+            if [ -f "$ioapi" ]; then
+              sed -i 's/fopen64(/fopen(/g; s/ftello64(/ftello(/g; s/fseeko64(/fseeko(/g' "$ioapi"
+              echo "Patched legacy minizip large-file stdio aliases in $ioapi"
+            fi
+          fi
+          exit "$code"
+          EOF
+          chmod +x /tmp/frontier-bin/git
+          export PATH="/tmp/frontier-bin:$PATH"
+
           chmod +x ci/probe_decomp_client.sh
           ci/probe_decomp_client.sh
       - name: Upload probe log
