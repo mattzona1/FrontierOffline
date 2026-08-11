@@ -23,8 +23,8 @@ jobs:
         shell: bash
         run: |
           # The probe clones the recovered client internally. Wrap that single
-          # clone so legacy cocos2d-x/minizip gets a deterministic Android NDK
-          # compatibility patch before CMake ever sees the source.
+          # clone so deterministic source-recovery patches are applied before
+          # CMake ever sees the upstream work-in-progress tree.
           mkdir -p /tmp/frontier-bin
           cat > /tmp/frontier-bin/git <<'EOF'
           #!/usr/bin/env bash
@@ -32,12 +32,28 @@ jobs:
           code=$?
           if [ "$code" -eq 0 ] && [ "${1:-}" = "clone" ]; then
             dest="${!#}"
+
             ioapi="$dest/libs/cocos2d-x/cocos2dx/support/zip_support/ioapi.cpp"
             if [ -f "$ioapi" ]; then
               # arm64 Android is LP64, so standard long-based stdio already
               # carries 64-bit offsets. The legacy *64 aliases are unnecessary.
               sed -i 's/fopen64(/fopen(/g; s/ftello64(/ftell(/g; s/fseeko64(/fseek(/g' "$ioapi"
               echo "Patched legacy minizip large-file stdio aliases in $ioapi"
+            fi
+
+            scrl="$dest/src/ScrlLayer.cpp"
+            if [ -f "$scrl" ]; then
+              cat >> "$scrl" <<'CPP'
+
+          // FrontierOffline recovery: upstream declares visit() but its
+          // recovered translation unit contains no body. Calling the base
+          // implementation preserves cocos2d-x traversal semantics.
+          void ScrlLayer::visit()
+          {
+              cocos2d::CCLayer::visit();
+          }
+          CPP
+              echo "Restored ScrlLayer::visit() in $scrl"
             fi
           fi
           exit "$code"
