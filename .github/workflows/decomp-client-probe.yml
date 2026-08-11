@@ -21,6 +21,11 @@ jobs:
         id: build
         continue-on-error: true
         shell: bash
+        env:
+          # cocos2d-x 2.0.3/minizip references glibc-style *64 stdio names.
+          # Android's current 64-bit ABI already uses 64-bit file offsets, so
+          # map those legacy aliases to the standard Android stdio functions.
+          CXXFLAGS: -Dfopen64=fopen -Dftello64=ftello -Dfseeko64=fseeko
         run: |
           chmod +x ci/probe_decomp_client.sh
           ci/probe_decomp_client.sh
