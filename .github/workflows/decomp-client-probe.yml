@@ -7,6 +7,7 @@ on:
     paths:
       - 'ci/probe_decomp_client.sh'
       - 'ci/patch_offline_runtime.py'
+      - 'ci/patch_offline_store.py'
       - '.github/workflows/decomp-client-probe.yml'
 
 jobs:
@@ -156,6 +157,9 @@ jobs:
             if [ -f "${GITHUB_WORKSPACE}/ci/patch_offline_runtime.py" ]; then
               python3 "${GITHUB_WORKSPACE}/ci/patch_offline_runtime.py" "$dest"
             fi
+            if [ -f "${GITHUB_WORKSPACE}/ci/patch_offline_store.py" ]; then
+              python3 "${GITHUB_WORKSPACE}/ci/patch_offline_store.py" "$dest"
+            fi
           fi
           exit "$code"
           EOF
@@ -164,27 +168,64 @@ jobs:
 
           chmod +x ci/probe_decomp_client.sh
           ci/probe_decomp_client.sh
+
+      - name: Verify hard-offline APK sandbox
+        id: offline_gate
+        if: steps.build.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find .decompfrontier-client-probe/src/android/app/build/outputs/apk -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          echo "APK=$APK"
+
+          AAPT="$(find "${ANDROID_HOME}/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          test -x "$AAPT"
+          "$AAPT" dump permissions "$APK" | tee offline-safety-report.txt
+
+          forbidden='android.permission.INTERNET|android.permission.ACCESS_NETWORK_STATE|android.permission.ACCESS_WIFI_STATE|android.permission.GET_ACCOUNTS|android.permission.READ_PHONE_STATE|android.permission.READ_PRIVILEGED_PHONE_STATE|com.android.vending.BILLING|com.google.android.c2dm.permission.RECEIVE|sg.gumi.bravefrontier.permission.C2D_MESSAGE|com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE'
+          if grep -E "$forbidden" offline-safety-report.txt; then
+            echo 'ERROR: forbidden online-era permission survived manifest merge.'
+            exit 1
+          fi
+
+          MERGED="$(find .decompfrontier-client-probe/src/android/app/build/intermediates -type f -name AndroidManifest.xml | grep -E 'merged_manifests|merged_manifest' | head -n 1 || true)"
+          if [ -n "$MERGED" ]; then
+            echo "Merged manifest: $MERGED" | tee -a offline-safety-report.txt
+            if grep -Eiq 'FirebaseInitProvider|FirebaseInstanceIdReceiver|AnalyticsService|AnalyticsReceiver|FacebookInitProvider|CustomTabActivity|YoutubeActivity|com\.android\.billing|BillingService' "$MERGED"; then
+              echo 'ERROR: online SDK component survived merged manifest.' | tee -a offline-safety-report.txt
+              grep -Ein 'FirebaseInitProvider|FirebaseInstanceIdReceiver|AnalyticsService|AnalyticsReceiver|FacebookInitProvider|CustomTabActivity|YoutubeActivity|com\.android\.billing|BillingService' "$MERGED" | tee -a offline-safety-report.txt
+              exit 1
+            fi
+          fi
+
+          echo 'HARD_OFFLINE_GATE_OK' | tee -a offline-safety-report.txt
+
       - name: Upload probe log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: decomp-client-build-probe
-          path: decomp-client-build.log
+          path: |
+            decomp-client-build.log
+            offline-safety-report.txt
           if-no-files-found: warn
-      - name: Upload real client APK
-        if: always()
+
+      - name: Upload hard-offline real client APK
+        if: steps.build.outcome == 'success' && steps.offline_gate.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: FrontierOffline-DecompClient-APK
           path: .decompfrontier-client-probe/src/android/app/build/outputs/apk/**/*.apk
-          if-no-files-found: ignore
+          if-no-files-found: error
+
       - name: Report probe status
         if: always()
         shell: bash
         run: |
-          if grep -q 'DECOMP_CLIENT_BUILD_OK' decomp-client-build.log 2>/dev/null; then
-            echo 'Real client build succeeded.'
+          if grep -q 'DECOMP_CLIENT_BUILD_OK' decomp-client-build.log 2>/dev/null && grep -q 'HARD_OFFLINE_GATE_OK' offline-safety-report.txt 2>/dev/null; then
+            echo 'Real client build succeeded and passed the hard-offline gate.'
           else
-            echo 'Real client build is blocked; inspect the uploaded log for the next concrete blocker.'
+            echo 'Real client build or hard-offline gate is blocked; inspect the uploaded diagnostics.'
             exit 1
           fi
