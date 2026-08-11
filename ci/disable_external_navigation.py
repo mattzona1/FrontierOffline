@@ -153,3 +153,6 @@ print(" - remote WebView navigation")
 print(" - mailto intents")
 print(" - YouTube playback entry point")
 print(" - app-store/rating links")
+
+# Keep this file in the probe path filter so native offline-flow changes trigger
+# a fresh hard-offline APK verification build.
