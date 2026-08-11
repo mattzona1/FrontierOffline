@@ -64,7 +64,9 @@ p.write_text(s)
 PY
 
 # Keep cocos2d-x 2.0.3 on C++98 while compiling only the recovered Brave
-# Frontier game target as C++11. Retain modern armv7-a spelling for later.
+# Frontier game target as C++11. The renderer/touch JNI translation units are
+# compiled directly into libgame.so so Android's name-resolved exports cannot
+# be dead-stripped from the static cocos archive.
 python3 - "$CMAKE" "$SRC_CMAKE" <<'PY'
 from pathlib import Path
 import sys
@@ -84,7 +86,16 @@ s = src.read_text()
 needle = 'target_link_libraries(${TARGET} PRIVATE cocos2d-x picojson)'
 if needle not in s:
     raise SystemExit('Expected game target link line not found in src/CMakeLists.txt')
-insert = 'set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 11)\nset_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)\n\n'
+insert = '''set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 11)
+set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
+
+if(ANDROID)
+    target_sources(${TARGET} PRIVATE
+        "${CMAKE_SOURCE_DIR}/libs/cocos2d-x/cocos2dx/platform/android/jni/Java_org_cocos2dx_lib_Cocos2dxRenderer.cpp"
+        "${CMAKE_SOURCE_DIR}/libs/cocos2d-x/cocos2dx/platform/android/jni/TouchesJni.cpp")
+endif()
+
+'''
 src.write_text(s.replace(needle, insert + needle, 1))
 PY
 
@@ -265,6 +276,8 @@ grep -n 'OFFLINE_MODE' "$BFCONFIG" || true
 grep -n 'embedded HTTP server disabled' "$BRAVEFRONTIER" || true
 grep -n -A3 'abiFilters' "$APP_GRADLE" || true
 grep -n 'CXX_STANDARD 11' "$SRC_CMAKE" || true
+grep -n 'Cocos2dxRenderer.cpp' "$SRC_CMAKE" || true
+grep -n 'TouchesJni.cpp' "$SRC_CMAKE" || true
 grep -n 'COCOS_KAZMATH_SOURCES' "$LIBS_CMAKE" || true
 grep -n 'class NodeStatus' "$BASESCENE_HPP" || true
 grep -n 'BaseScene.hpp' "$BASESCENE_CPP" || true
